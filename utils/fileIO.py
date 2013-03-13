@@ -19,11 +19,14 @@ __all__ = [
 
 import os
 from subprocess import Popen, PIPE
+from errors import filecheck, filequit, directorycheck, directorymake, directoryquit
 import cPickle
-import gzip
+import bz2, gzip
+
 
 def basename(filename):
     return os.path.basename(filename)
+
 
 def can_locate(filename):
     return (os.path.isfile(filename) if filename else False)
@@ -34,10 +37,39 @@ def can_open(directory):
 
 
 def delete(filename):
-    if can_locate(filename):
-        return os.remove(filename)
+    return os.remove(filecheck(filename))
+
+
+def freader(filename, gz=False, bz=False):
+    """ Returns a filereader object that can handle gzipped input """
+
+    filecheck(filename)
+    if filename.endswith('gz'):
+        gz = True
+    elif filename.endswith('bz2'):
+        bz = True
+
+    if gz:
+        return gzip.open(filename, 'rb')
+    elif bz:
+        return bz2.BZ2File(filename, 'r')
     else:
-        raise FileError(filename)
+        return open(filename, 'r')
+
+
+def fwriter(filename, gz=False, bz=False):
+    """ Returns a filewriter object that can write plain or gzipped output"""
+
+    if filename.endswith('gz'):
+        gz = True
+    elif filename.endswith('bz2'):
+        bz = True
+    if gz:
+        return gzip.open(filename, 'wb')
+    elif bz:
+        return bz2.BZ2File(filename, 'w')
+    else:
+        return open(filename, 'w')
 
 
 def gpickle(obj, filename):
@@ -50,6 +82,7 @@ def gpickle(obj, filename):
 def gunpickle(filename):
 
     return cPickle.load(gzip.open(filename, 'rb'))
+
 
 def join_path(*elements):
     return os.path.join(*elements)
@@ -72,8 +105,7 @@ def locate_by_dir(filename, directory=None):
 
 
 def locate_file(filename, env_var='', directory=''):
-    f = locate_by_env(filename, env_var) or locate_by_dir(filename,
-            directory)
+    f = locate_by_env(filename, env_var) or locate_by_dir(filename, directory)
     return (os.path.abspath(f) if can_locate(f) else None)
 
 
