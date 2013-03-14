@@ -2,6 +2,7 @@
 
 from utils import fileIO
 
+
 class Tree(object):
 
     def __init__(
@@ -10,7 +11,7 @@ class Tree(object):
         score=0,
         output='',
         program='',
-        name='tree_object'
+        name='tree_object',
         ):
 
         self.newick = newick
@@ -20,7 +21,8 @@ class Tree(object):
         self.name = name
 
     def __repr__(self):
-        return '{0}{1}'.format(self.__class__.__name__, (self.newick if self.newick else '(None)'))
+        return '{0}{1}'.format(self.__class__.__name__,
+                               (self.newick if self.newick else '(None)'))
 
     def __str__(self):
         """ Represents the object's information inside a newick comment, so is
@@ -28,28 +30,19 @@ class Tree(object):
 
         s = '[Tree Object:\n'
         if self.name:
-            s += 'Name:\t' + self.name + '\n'
-        s += 'Program:\t{0}\n'.format(self.program) \
-            + 'Score:\t{0}\n'.format(self.score) \
-            + 'Rooted:\t{0}\n'.format(self.rooted) \
-            + 'Tree:\t]{0}\n'.format(self.newick)
+            s += 'Name:\t{0}\n'.format(self.name)
+
+        s += ('Program:\t{0}\n'
+              'Score:\t{1}\n'
+              'Tree:\t]{2}\n'.format(self.program, self.score, self.newick))
+
         return s
 
     def __eq__(self, other):
-        equal = True
-        if not self.name == other.name:
-            return False
-        if not self.newick == other.newick:
-            return False
-        if not self.program == other.program:
-            return False
-        if not self.score == other.score:
-            return False
-        if not self.rooted == other.rooted:
-            return False
-        if not self.output == other.output:
-            return False
-        return equal
+
+        return all([self.name == other.name, self.newick == other.newick,
+                   self.program == other.program, self.score == other.score,
+                   self.output == other.output])
 
     def copy(self):
         copy = self.__new__(type(self))
@@ -67,11 +60,11 @@ class Tree(object):
         metadata is included (i.e. metadata=True) """
 
         with fileIO.fwriter(outfile) as writer:
-        
+
             if metadata:
                 writer.write(str(self))
-            
             else:
+
                 writeable = self.newick
                 if suppress_NHX:
                     writeable.lstrip('[&R] ')

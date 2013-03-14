@@ -2,7 +2,7 @@
 
 from utils import fileIO
 
-class SequenceRecord(object):
+class Seq(object):
 
     """ Class for reading sequence files in fasta or phylip formats Supports
     writing in fasta, phylip, phylip interleaved, nexus formats, sorting
@@ -448,3 +448,9 @@ class SequenceRecord(object):
             if print_to_screen:
                 print s
             return outfile
+
+def concatenate(records):
+    seed = deepcopy(records[0])
+    for rec in records[1:]:
+        seed += rec
+    return seed
