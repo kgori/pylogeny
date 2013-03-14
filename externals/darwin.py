@@ -6,6 +6,8 @@ from utils import fileIO
 
 class Darwin(ExternalSoftware):
 
+    """ Run commands through Darwin language"""
+
     default_binary = 'darwin'
 
     def __init__(self, tmpdir='/tmp'):
