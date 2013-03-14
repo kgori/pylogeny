@@ -3,6 +3,7 @@
 from external import ExternalSoftware
 from errors import filecheck, FileError
 from utils import fileIO
+import numpy as np
 
 class Darwin(ExternalSoftware):
 
@@ -55,3 +56,17 @@ class Darwin(ExternalSoftware):
         result = self.read()
         self.clean()
         return result
+
+def numpiser(s, dtype=None):
+    elements =[line.split('\t') for line in s.strip().split('\n')]
+    arr = np.array(elements, dtype=dtype)
+    r,c = arr.shape
+    if c == 1:
+        arr = arr.reshape(r, )
+    return arr
+
+
+def runDarwin(cmd, dtype=None, **kwargs):
+    dw = Darwin()
+    output = dw.run(cmd, **kwargs)
+    return numpiser(output, dtype)
