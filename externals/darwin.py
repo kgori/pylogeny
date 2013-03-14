@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from external import ExternalSoftware
-from utils.errors import filecheck, FileError
+from errors import filecheck, FileError
 from utils import fileIO
 
 class Darwin(ExternalSoftware):

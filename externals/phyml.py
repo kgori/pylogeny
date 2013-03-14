@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 from external import TreeSoftware
-from utils.errors import filecheck
-from utils.tree import Tree
+from errors import filecheck
+from datastructs.tree import Tree
 import re
 
 class Phyml(TreeSoftware):

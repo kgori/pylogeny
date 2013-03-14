@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 from external import TreeSoftware
-from utils.errors import filecheck
-from utils.tree import Tree
-from utils import dpy, fileIO
+from errors import filecheck
+from datastructs.tree import Tree
+from utils import fileIO
 from phyml import Phyml
 
 
@@ -26,7 +26,8 @@ class TreeCollection(TreeSoftware):
         self.add_flag('-L', tmpfiles['lab'])
         self.add_flag('-T', guidetree_file)
         if verbosity == 1:
-            print_and_return('Running TreeCollection on {0}'.format(self.record.name))
+            print_and_return('Running TreeCollection on {0}'.format(
+                self.record.name))
         elif verbosity > 1:
             print 'Running TreeCollection on {0}'.format(self.record.name)
         (stdout, stderr) = self.call()

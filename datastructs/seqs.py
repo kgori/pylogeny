@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import fileIO
+from utils import fileIO
 
 class SequenceRecord(object):
 
