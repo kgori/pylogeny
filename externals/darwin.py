@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 from external import ExternalSoftware
-from errors import filecheck, FileError
-from utils import fileIO
+from ..errors import filecheck, FileError
+from ..utils import fileIO
 import numpy as np
 
 class Darwin(ExternalSoftware):

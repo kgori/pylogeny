@@ -19,7 +19,7 @@ __all__ = [
 
 import os
 from subprocess import Popen, PIPE
-from errors import filecheck, filequit, directorycheck, directorymake, directoryquit
+from ..errors import filecheck, filequit, directorycheck, directorymake, directoryquit
 import cPickle
 import bz2, gzip
 

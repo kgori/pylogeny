@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from utils import fileIO
+from ..utils import fileIO
 
 
 class Tree(object):

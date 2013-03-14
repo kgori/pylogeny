@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 from external import TreeSoftware
-from errors import filecheck
-from datastructs.tree import Tree
-from utils import fileIO
+from ..errors import filecheck
+from ..datastructs.tree import Tree
+from ..utils import fileIO
 from phyml import Phyml
 
 

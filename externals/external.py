@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-from errors import FileError
-from utils import fileIO
+from ..errors import FileError
+from ..utils import fileIO
 
 local_dir = fileIO.path_to(__file__)
 
