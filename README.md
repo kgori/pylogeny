@@ -1,6 +1,4 @@
-pylib
+pylogeny
 =====
 
-Python Error and FileIO conveniences
-Same as in treeCl repo - This repo will one day end up as a git submodule of treeCl
-in some form or another
+Convenience wrappers for phylogenetics software, sequence manipulation and file format conversion, error handling and file input-output.
