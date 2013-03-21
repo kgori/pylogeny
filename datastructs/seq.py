@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from ..utils import fileIO
+from copy import deepcopy
 
 class Seq(object):
 
