@@ -131,7 +131,7 @@ class Seq(object):
         new_seqs = []
         for s in self.sequences:
             new_seqs.append(s * n)
-        return SequenceRecord(headers=self.headers, sequences=new_seqs)
+        return self.__class__(headers=self.headers, sequences=new_seqs)
 
     def __rmul__(self, n):
         if not isinstance(n, int):
@@ -140,7 +140,7 @@ class Seq(object):
         new_seqs = []
         for s in self.sequences:
             new_seqs.append(s * n)
-        return SequenceRecord(headers=self.headers, sequences=new_seqs)
+        return self.__class__(headers=self.headers, sequences=new_seqs)
 
     def __eq__(self, other):
         if type(other) is type(self):
@@ -165,7 +165,7 @@ class Seq(object):
         if in_place:
             self.headers = h
             self.sequences = s
-        return SequenceRecord(name=self.name, headers=h, sequences=s)
+        return self.__class__(name=self.name, headers=h, sequences=s)
 
     def sort_by_name(self, in_place=True):
         """ Sorts sequences by name, treating numbers as integers (i.e. sorting
@@ -183,7 +183,7 @@ class Seq(object):
             self.headers = h
             self.sequences = s
         else:
-            return SequenceRecord(name=self.name, headers=h, sequences=s)
+            return self.__class__(name=self.name, headers=h, sequences=s)
 
     def hashname(self):
         H = hashlib.sha1()
