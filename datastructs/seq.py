@@ -2,6 +2,7 @@
 
 from ..utils import fileIO
 from copy import deepcopy
+import re
 
 class Seq(object):
 
