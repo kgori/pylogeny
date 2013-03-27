@@ -84,6 +84,13 @@ def gunpickle(filename):
     return cPickle.load(gzip.open(filename, 'rb'))
 
 
+def head(filename, n=10):
+    """ prints the top `n` lines of a file """
+    with freader(filename) as fr:
+        for _ in range(n):
+            print fr.readline().strip()
+            
+
 def join_path(*elements):
     return os.path.join(*elements)
 
