@@ -11,8 +11,9 @@ class Darwin(ExternalSoftware):
 
     default_binary = 'darwin'
 
-    def __init__(self, tmpdir='/tmp'):
+    def __init__(self, tmpdir='/tmp', verbosity=0):
         self.tmpdir = tmpdir
+        self.verbosity = verbosity
         self.comfile = '{0}/darcom.drw'.format(self.tmpdir)
         self.outfile = '{0}/output.drw'.format(self.tmpdir)
 
@@ -58,11 +59,11 @@ class Darwin(ExternalSoftware):
         return result
 
 def numpiser(s, dtype=None):
-    elements =[line.split('\t') for line in s.strip().split('\n')]
+    elements =[line.strip().split() for line in s.strip().split('\n')]
     arr = np.array(elements, dtype=dtype)
     r,c = arr.shape
-    if c == 1:
-        arr = arr.reshape(r, )
+    if r == 1 or c == 1:
+        arr = arr.reshape(max(r, c), )
     return arr
 
 
