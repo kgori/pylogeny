@@ -3,6 +3,7 @@
 from ..utils import fileIO
 from ..errors import optioncheck
 from copy import deepcopy
+import hashlib
 import re
 
 class Seq(object):
