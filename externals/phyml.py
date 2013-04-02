@@ -3,12 +3,15 @@
 from external import TreeSoftware
 from ..errors import filecheck
 from ..datastructs.tree import Tree
+from ..utils import fileIO
+from ..utils.printing import print_and_return
 import re
 
 class Phyml(TreeSoftware):
 
     default_binary = 'phyml'
     score_regex = re.compile('(?<=Log-likelihood: ).+')
+    local_dir = fileIO.path_to(__file__)
 
     def read(self, filename):
         tree_filename = filename + '_phyml_tree.txt'
@@ -40,7 +43,8 @@ class Phyml(TreeSoftware):
         if verbosity > 1:
             print 'Cleaning tempfiles'
         self.clean()
-        tree_object = Tree(tree, score, analysis, self.record.name, stats)
+        tree_object = Tree(newick=tree, score=score, program=analysis, 
+            name=self.record.name, output=stats)
         self.record.tree = tree_object
         if verbosity > 1:
             print 'Done.'

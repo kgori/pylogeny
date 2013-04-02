@@ -3,6 +3,7 @@
 from external import TreeSoftware
 from ..errors import filecheck
 from ..datastructs.tree import Tree
+from ..utils import fileIO
 import re
 import random
 
@@ -23,6 +24,7 @@ def rstring(length, numOnly=False, letOnly=False):
 class Raxml(TreeSoftware):
 
 	default_binary = 'raxml'
+    local_dir = fileIO.path_to(__file__)
 
     def read(self):
         pass

@@ -3,8 +3,6 @@
 from ..errors import FileError
 from ..utils import fileIO
 
-local_dir = fileIO.path_to(__file__)
-
 
 class ExternalSoftware(object):
 
@@ -14,18 +12,18 @@ class ExternalSoftware(object):
 
     default_binary = ''
     default_env = ''
+    local_dir = fileIO.path_to(__file__)
 
     def __init__(self, supplied_binary='', tmpdir='/tmp'):
 
         self.flags = {}
         self.tempfiles = []
-
         if fileIO.can_locate(supplied_binary):
             self.binary = supplied_binary
         else:
 
             default_binary = fileIO.locate_file(self.default_binary,
-                    self.default_env, local_dir)
+                    self.default_env, self.local_dir)
             self.binary = default_binary
 
         if self.binary is None:

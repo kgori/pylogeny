@@ -4,13 +4,15 @@ from external import TreeSoftware
 from ..errors import filecheck
 from ..datastructs.tree import Tree
 from ..utils import fileIO
-from ...local.utils import dpy
+from ..utils import dpy
+from ..utils.printing import print_and_return
 from phyml import Phyml
 
 
 class TreeCollection(TreeSoftware):
 
     default_binary = 'TreeCollection'
+    local_dir = fileIO.path_to(__file__)
 
     def read(self, output):
         output = output.split()
@@ -36,8 +38,8 @@ class TreeCollection(TreeSoftware):
         if verbosity > 1:
             print stdout, stderr
         (score, tree) = self.read(stdout)
-        tree_object = Tree(tree, score, fileIO.basename(self.binary),
-                           self.record.name, stdout).scale(0.01)
+        tree_object = Tree(tree, score, program=fileIO.basename(self.binary),
+                           name=self.record.name, output=stdout).scale(0.01)
         self.record.tree = tree_object
         return tree_object
 
