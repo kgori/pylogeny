@@ -4,6 +4,7 @@ from external import TreeSoftware
 from ..errors import filecheck
 from ..datastructs.tree import Tree
 from ..utils import fileIO
+from ...local.utils import dpy
 from phyml import Phyml
 
 
