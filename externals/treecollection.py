@@ -109,9 +109,9 @@ class TreeCollection(TreeSoftware):
         self.add_tempfile(filename)
         return filename
 
-def runTC(rec, guidetrees=None, verbosity=0):
+def runTC(rec, guidetrees=None, verbosity=0, tmpdir=None):
     if not isinstance(guidetrees, list):
         guidetrees = [guidetrees]
-    tc = TreeCollection(rec)
+    tc = TreeCollection(rec, tmpdir=tmpdir)
     trees = [tc.run(guidetree, verbosity) for guidetree in guidetrees]
     return min(trees, key=lambda x: x.score)

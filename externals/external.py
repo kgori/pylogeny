@@ -74,10 +74,10 @@ class ExternalSoftware(object):
 
 class TreeSoftware(ExternalSoftware):
 
-    def __init__(self, record, supplied_binary=''):
+    def __init__(self, record, supplied_binary='', tmpdir=None):
         super(TreeSoftware, self).__init__(supplied_binary)
         self.record = record
-        self.tmpdir = record.tmpdir or '/tmp'
+        self.tmpdir = tmpdir or record.tmpdir or '/tmp'
 
     @property
     def record(self):

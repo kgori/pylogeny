@@ -81,6 +81,6 @@ class Phyml(TreeSoftware):
             for flag in defaults:
                 self.add_flag(flag, defaults[flag])
 
-def runPhyml(rec, analysis, verbosity=0):
-    p = Phyml(rec)
+def runPhyml(rec, analysis, verbosity=0, tmpdir=None):
+    p = Phyml(rec, tmpdir=tmpdir)
     return p.run(analysis, verbosity)
