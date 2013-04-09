@@ -76,6 +76,9 @@ def get_wrf_distance(dpy_tree1, dpy_tree2):
 def get_euc_distance(dpy_tree1, dpy_tree2):
     return dpy_tree1.euclidean_distance(dpy_tree2)
 
+def ntaxa(tree):
+    t = convert_to_dendropy_tree(tree)
+    return len(t.leaf_nodes())
 
 def print_plot(tree):
     return convert_to_dendropy_tree(tree).print_plot()

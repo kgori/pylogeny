@@ -8,6 +8,17 @@ from ..errors import FileError, filecheck
 from ..utils import dpy as utils_dpy
 
 
+def blob(master, ntimes, ntrees):
+    """ Placeholder for a sklearn.datasets.make_blobs style function 
+    to generate a group of similar trees from a master tree """
+    blob = []
+    for tree in range(ntrees):
+        manip = TreeManip(master)
+        for time in range(ntimes):
+            manip.spr()
+        blob.append(manip.tree)
+    return blob
+
 class TreeManip(object):
 
     def __init__(self, tree):
