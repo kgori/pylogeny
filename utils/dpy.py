@@ -80,6 +80,30 @@ def ntaxa(tree):
     t = convert_to_dendropy_tree(tree)
     return len(t.leaf_nodes())
 
+def taxon_labels(dpy_tree):
+    return set([n.taxon.label for n in dpy_tree.leaf_nodes()])
+
+def length(tree):
+    t = convert_to_dendropy_tree(tree)
+    return t.length()
+
+def pruned_pair(tree1, tree2):
+    t1 = convert_to_dendropy_tree(tree1)
+    t2 = convert_to_dendropy_tree(tree2)
+    tax1 = taxa(t1)
+    tax2 = taxa(t2)
+    in1not2 = list(tax1 - tax2)
+    in2not1 = list(tax2 - tax1)
+    t1.prune_taxa_with_labels(in1not2)
+    t2.prune_taxa_with_labels(in2not1)
+    n1 = convert_dendropy_to_newick(t1)
+    n2 = convert_dendropy_to_newick(t2)
+    p1 = tree1.copy()
+    p2 = tree2.copy()
+    p1.newick = n1
+    p2.newick = n2
+    return p1, p2
+
 def print_plot(tree):
     return convert_to_dendropy_tree(tree).print_plot()
 

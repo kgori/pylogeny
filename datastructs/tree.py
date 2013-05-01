@@ -62,6 +62,17 @@ class TreeManip(object):
         self.tree = tree_copy
         return self.tree
 
+    def prune_to_subset(self, subset):
+        t = utils_dpy.convert_to_dendropy_tree(self.tree)
+        labels = utils_dpy.taxon_labels(t)
+        if not subset.issubset(labels):
+            print '"subset" is not a subset'
+        else: 
+            t.retain_taxa_with_labels(subset)
+            self.tree.newick = self.dendropy_as_newick(t)
+        return self.tree
+
+
     def randomise_labels(self):
         t = self.convert_to_dendropy_tree()
         names = [l.taxon.label for l in t.leaf_iter()]
@@ -377,11 +388,35 @@ class Tree(object):
                    self.program == other.program, self.score == other.score,
                    self.output == other.output])
 
+
+    def __len__(self):
+        return utils_dpy.ntaxa(self)
+
+    def __and__(self, other):
+        return self.intersection(other)
+
     def copy(self):
         copy = self.__new__(type(self))
         copy.__dict__ = {key: value for (key, value) in self.__dict__.items()}
         return copy
 
+
+    def labels(self):
+        t = utils_dpy.convert_to_dendropy_tree(self)
+        return utils_dpy.taxon_labels(t)
+
+    def intersection(self, other):
+        taxa1 = self.labels()
+        taxa2 = other.labels()
+        return taxa1 & taxa2
+
+    def pruned_pair(self, other):
+        common = self & other
+        tm1 = TreeManip(self)
+        tm2 = TreeManip(other)
+        p1 = tm1.prune_to_subset(common)
+        p2 = tm2.prune_to_subset(common)
+        return (p1, p2)
 
     def write_to_file(
         self,
@@ -483,6 +518,9 @@ class Tree(object):
     def strip(self):
         return TreeManip(self).strip()
 
+    def length(self):
+        return utils_dpy.length(self)
+
     def print_plot(self):
         utils_dpy.print_plot(self)
 
@@ -532,6 +570,8 @@ class Tree(object):
         return g.rtree()
 
     def gene_tree(self, scale_to=None):
+        """ Returns a constrained Kingman gene tree using self as species 
+        tree. Optionally rescales to height given by scale_to parameter """
         g = TreeGen(template=self)
         return g.gene_tree(scale_to)['gene_tree']
 
