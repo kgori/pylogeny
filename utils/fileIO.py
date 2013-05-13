@@ -17,11 +17,13 @@ __all__ = [
     'verify',
     ]
 
+import bz2
+import cPickle
+import glob
+import gzip
 import os
 from subprocess import Popen, PIPE
-from errors import filecheck, filequit, directorycheck, directorymake, directoryquit
-import cPickle
-import bz2, gzip
+from ..errors import filecheck, filequit, directorycheck, directorymake, directoryquit
 
 
 def basename(filename):
@@ -72,6 +74,16 @@ def fwriter(filename, gz=False, bz=False):
         return open(filename, 'w')
 
 
+def glob_by_extensions(directory, extensions):
+    """ Returns files matched by all extensions in the extensions list """
+    directorycheck(directory)
+    files = []
+    xt = files.extend
+    for ex in extensions:
+        xt(glob.glob('{0}/*.{1}'.format(directory, ex)))
+    return files
+
+
 def gpickle(obj, filename):
 
     if not filename.endswith('.gz'):
@@ -83,6 +95,13 @@ def gunpickle(filename):
 
     return cPickle.load(gzip.open(filename, 'rb'))
 
+
+def head(filename, n=10):
+    """ prints the top `n` lines of a file """
+    with freader(filename) as fr:
+        for _ in range(n):
+            print fr.readline().strip()
+            
 
 def join_path(*elements):
     return os.path.join(*elements)

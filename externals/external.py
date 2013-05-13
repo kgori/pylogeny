@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 
-from errors import FileError
-from utils import fileIO
-
-local_dir = fileIO.path_to(__file__)
+from ..errors import FileError
+from ..utils import fileIO
 
 
 class ExternalSoftware(object):
@@ -14,18 +12,18 @@ class ExternalSoftware(object):
 
     default_binary = ''
     default_env = ''
+    local_dir = fileIO.path_to(__file__)
 
     def __init__(self, supplied_binary='', tmpdir='/tmp'):
 
         self.flags = {}
         self.tempfiles = []
-
         if fileIO.can_locate(supplied_binary):
             self.binary = supplied_binary
         else:
 
             default_binary = fileIO.locate_file(self.default_binary,
-                    self.default_env, local_dir)
+                    self.default_env, self.local_dir)
             self.binary = default_binary
 
         if self.binary is None:
@@ -76,10 +74,10 @@ class ExternalSoftware(object):
 
 class TreeSoftware(ExternalSoftware):
 
-    def __init__(self, record, supplied_binary=''):
+    def __init__(self, record, supplied_binary='', tmpdir=None):
         super(TreeSoftware, self).__init__(supplied_binary)
         self.record = record
-        self.tmpdir = record.tmpdir or '/tmp'
+        self.tmpdir = tmpdir or record.tmpdir or '/tmp'
 
     @property
     def record(self):

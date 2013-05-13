@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-from utils import fileIO
+from ..utils import fileIO
+from ..errors import optioncheck
+from copy import deepcopy
+import hashlib
+import re
 
 class Seq(object):
 
@@ -129,7 +133,7 @@ class Seq(object):
         new_seqs = []
         for s in self.sequences:
             new_seqs.append(s * n)
-        return SequenceRecord(headers=self.headers, sequences=new_seqs)
+        return self.__class__(headers=self.headers, sequences=new_seqs)
 
     def __rmul__(self, n):
         if not isinstance(n, int):
@@ -138,7 +142,7 @@ class Seq(object):
         new_seqs = []
         for s in self.sequences:
             new_seqs.append(s * n)
-        return SequenceRecord(headers=self.headers, sequences=new_seqs)
+        return self.__class__(headers=self.headers, sequences=new_seqs)
 
     def __eq__(self, other):
         if type(other) is type(self):
@@ -149,7 +153,7 @@ class Seq(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def sort_by_length(self, in_place=True):
+    def sort_by_length(self, in_place=True, reverse=True):
         """ Sorts sequences by ungapped length If in_place = False the sorting
         doesn't mutate the underlying object, and the output is returned If
         in_place = True the sorting mutates the self object """
@@ -159,13 +163,13 @@ class Seq(object):
 
         (h, s) = zip(*sorted(zip(self.headers, self.sequences),
                      key=lambda item: len(item[1].replace('-', '')),
-                     reverse=True))
+                     reverse=reverse))
         if in_place:
             self.headers = h
             self.sequences = s
-        return SequenceRecord(name=self.name, headers=h, sequences=s)
+        return self.__class__(name=self.name, headers=h, sequences=s)
 
-    def sort_by_name(self, in_place=True):
+    def sort_by_name(self, in_place=True, reverse=False):
         """ Sorts sequences by name, treating numbers as integers (i.e. sorting
         like this: 1, 2, 3, 10, 20 not 1, 10, 2, 20, 3). If in_place = False the
         sorting doesn't mutate the underlying object, and the output is returned
@@ -175,13 +179,13 @@ class Seq(object):
         sort_key = lambda item: tuple((int(num) if num else alpha) for (num,
                                       alpha) in re.findall(r'(\d+)|(\D+)',
                                       item[0]))
-        items = sorted(items, key=sort_key)
+        items = sorted(items, key=sort_key, reverse=reverse)
         (h, s) = zip(*items)
         if in_place:
             self.headers = h
             self.sequences = s
         else:
-            return SequenceRecord(name=self.name, headers=h, sequences=s)
+            return self.__class__(name=self.name, headers=h, sequences=s)
 
     def hashname(self):
         H = hashlib.sha1()
@@ -331,6 +335,16 @@ class Seq(object):
             (self.headers, self.sequences) = (headers, sequences)
             self._update()
 
+
+    def change_case(self, case):
+        optioncheck(case, ['lower', 'upper'])
+        if case=='upper':
+            self.sequences = [x.upper() for x in self.sequences]
+        else:
+            self.sequences = [x.lower() for x in self.sequences]
+        self._update()
+
+
     def write_fasta(
         self,
         outfile='stdout',
@@ -400,13 +414,14 @@ class Seq(object):
         outfile='stdout',
         print_to_screen=False,
         interleaved=False,
-        linebreaks=120,
+        linebreaks=None,
         ):
         """ Writes sequences to file in phylip format, interleaving optional If
         outfile = 'stdout' the sequences are printed to screen, not written to
         disk If print_to_screen = True the sequences are printed to screen
         whether they are written to disk or not """
 
+        linebreaks = linebreaks or 120
         maxlen = len(max(self.sequences, key=len))
         file_header = ' {0} {1}'.format(self.length, maxlen)
         s = [file_header]
