@@ -412,11 +412,14 @@ class Tree(object):
 
     def pruned_pair(self, other):
         common = self & other
-        tm1 = TreeManip(self)
-        tm2 = TreeManip(other)
-        p1 = tm1.prune_to_subset(common)
-        p2 = tm2.prune_to_subset(common)
+        p1 = self.prune_to_subset(common)
+        p2 = other.prune_to_subset(common)
         return (p1, p2)
+
+    def prune_to_subset(self, subset):
+        t = TreeManip(self)
+        tree = t.prune_to_subset(subset)
+        return tree
 
     def write_to_file(
         self,
@@ -520,6 +523,9 @@ class Tree(object):
 
     def length(self):
         return utils_dpy.length(self)
+
+    def ntaxa(self):
+        return utils_dpy.ntaxa(self)
 
     def print_plot(self):
         utils_dpy.print_plot(self)
