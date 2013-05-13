@@ -379,7 +379,7 @@ class Seq(object):
         file_header += \
             '    dimensions ntax={0} nchar={1};\n'.format(self.length, maxlen)
         file_header += \
-            '    format datatype={0} interleave=no gap=-;\n'.format(sequence_type)
+            '    format datatype={0} interleave=no gap=- missing=X;\n'.format(sequence_type)
         file_header += '    matrix\n' + '\n' + '\n'
 
         file_footer = '    ;\n' + '\n' + 'end;\n'
