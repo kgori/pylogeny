@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import dendropy 
+import re
 
 class Tree(dendropy.Tree):
     """Augmented version of dendropy Tree class"""
@@ -51,8 +52,8 @@ class Tree(dendropy.Tree):
         return self.intersection(other)
 
     def copy(self):
-        copy = self.__new__(type(self))
-        copy.__dict__ = {key: value for (key, value) in self.__dict__.items()}
+        copy = self.__class__(self.newick, self.score, self.output, 
+            self.program, self.name)
         return copy
 
     @property
@@ -66,6 +67,10 @@ class Tree(dendropy.Tree):
     def rooted(self):
         return len(self.seed_node.child_nodes()) == 2 if self.newick else None
 
+    @property
+    def labels(self):
+        return set([n.taxon.label for n in self.leaf_nodes()]) 
+
     @classmethod
     def bifurcate_base(cls, newick):
         t = cls(newick)
@@ -76,15 +81,35 @@ class Tree(dendropy.Tree):
     def trifurcate_base(cls, newick):
         t = cls(newick)
         t.deroot()
-        return t.newick
-
-    def labels(self):
-        return set([n.taxon.label for n in self.leaf_nodes()])    
+        return t.newick   
 
     def intersection(self, other):
         taxa1 = self.labels()
         taxa2 = other.labels()
         return taxa1 & taxa2
+
+    def prune_to_subset(self, subset, inplace=False):
+        if not subset.issubset(self.labels):
+            print '"subset" is not a subset'
+            return
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+        t.retain_taxa_with_labels(subset)
+        return t
+
+    def pruned_pair(self, other, inplace=False):
+        assert isinstance(other, self.__class__)
+
+
+    def scale(self, factor, inplace=True):
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+        t.scale_edges(factor)
+        return t
 
     def write_to_file(
         self,
