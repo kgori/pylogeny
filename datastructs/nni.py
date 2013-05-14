@@ -17,28 +17,32 @@ def get_children(tree, inner_edge):
     h = inner_edge.head_node
     t = inner_edge.tail_node
     if not tree.seed_node == t:
+        original_seed = tree.seed_node
         tree.reseed_at(t)
+    else: 
+        original_seed = None
     head_children = h.child_nodes()
     tail_children = list(set(t.child_nodes()) - set([h])) # See N1
+    if original_seed:
+        tree.reseed_at(original_seed)
     return {'head': head_children, 'tail': tail_children}
-
 
 def nni(
     tree,
     edge,
-    nbh,
-    nbt,
+    nn_head,
+    nn_tail,
     ):
     original_seed = tree.seed_node
     h = edge.head_node
     t = edge.tail_node
     tree.reseed_at(t)
-    assert nbh.parent_node == h
-    assert nbt.parent_node == t
-    h.remove_child(nbh)
-    t.remove_child(nbt)
-    h.add_child(nbt)
-    t.add_child(nbh)
+    assert nn_head.parent_node == h
+    assert nn_tail.parent_node == t
+    h.remove_child(nn_head)
+    t.remove_child(nn_tail)
+    h.add_child(nn_tail)
+    t.add_child(nn_head)
     tree.reseed_at(original_seed, update_splits=True)
 
 def _name_things(tree):
