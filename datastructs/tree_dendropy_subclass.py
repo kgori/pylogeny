@@ -5,6 +5,8 @@ import re
 import random
 from ..errors import FileError, filecheck
 
+def cast(dendropy_tree):
+    return Tree(dendropy_tree.as_newick_string() + ';')
 
 class Tree(dendropy.Tree):
 
@@ -30,6 +32,7 @@ class Tree(dendropy.Tree):
         self.output = output
         self.program = program
         self.name = name
+
 
     def __repr__(self):
         return '{0}{1}'.format(self.__class__.__name__,
@@ -177,6 +180,23 @@ Tree:\t]{3}
                 n.edge.length = max(0, distribution_func(*l))
         return t
 
+    def randomise_labels(
+        self,
+        inplace=False,
+        ):
+        """ Shuffles the leaf labels, but doesn't alter the tree structure """
+
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+
+        names = t.labels
+        random.shuffle(list(names))
+        for l in t.leaf_iter():
+            l.taxon_label = names.pop()
+        return t
+
     def get_inner_edges(self):
         """ Returns a list of the internal edges of the tree. """
         inner_edges = [e for e in self.preorder_edge_iter() if e.is_internal()
@@ -230,9 +250,17 @@ Tree:\t]{3}
         
         This operation acts on the tree inplace.
         """
+        
+        # This implementation works on unrooted Trees. If the input Tree is
+        # rooted, it is derooted in a way that allows the root to be
+        # re-established, using the reversible_deroot() method
+        reroot = False                 
+        if self.rooted:                 
+            reroot = True
+            rooting_data = self.reversible_deroot() 
 
-        original_seed = self.seed_node
-        head = edge.head_node
+        original_seed = self.seed_node              
+        head = edge.head_node                       
         tail = edge.tail_node
         self.reseed_at(tail)
         assert head_subtree.parent_node == head
@@ -242,6 +270,8 @@ Tree:\t]{3}
         head.add_child(tail_subtree)
         tail.add_child(head_subtree)
         self.reseed_at(original_seed)
+        if reroot:
+            self.reroot_at_edge(*rooting_data)
         self.update_splits()
 
     def rnni(self, inplace=False):
@@ -258,6 +288,42 @@ Tree:\t]{3}
                   ]))
         tree.nni(e, h, t)
         return tree
+
+    def reversible_deroot(self):
+        """ Stores info required to restore rootedness to derooted Tree. Returns
+        the edge that was originally rooted, the length of e1, and the length 
+        of e2.
+
+        Dendropy Derooting Process:
+        In a rooted tree the root node is bifurcating. Derooting makes it 
+        trifurcating. 
+
+        Call the two edges leading out of the root node e1 and e2.
+        Derooting with Tree.deroot() deletes one of e1 and e2 (let's say e2), 
+        and stretches the other to the sum of their lengths. Call this e3.
+
+        Rooted tree:                   Derooted tree:
+                 A                         A   B
+                 |_ B                       \ /   
+                /                            |
+               /e1                           |e3 (length = e1+e2; e2 is deleted)
+        Root--o               ===>           |
+               \e2                     Root--o _ C   
+                \ _ C                        |
+                 |                           D
+                 D
+
+        To reverse this with Tree.reroot_at_edge(edge, length1, length2, ...)
+        """
+        root_edge = self.seed_node.edge
+        lengths = dict([(edge, edge.length) for edge 
+            in self.seed_node.incident_edges() if edge is not root_edge])
+        self.deroot()
+        reroot_edge = (set(self.seed_node.incident_edges()) 
+                            & set(lengths.keys())).pop()
+        return (reroot_edge, reroot_edge.length - lengths[reroot_edge], 
+            lengths[reroot_edge])
+
 
     def write_to_file(
         self,
@@ -337,3 +403,127 @@ Tree:\t]{3}
     def wrfdist(self, other):
         cp = self._unify_taxon_sets(other)
         return self.robinson_foulds_distance(cp)
+
+class TreeGen(object):
+
+    def __init__(
+        self,
+        nspecies=16,
+        names=None,
+        template=None,
+        cf=False,
+        ):
+
+        self.nspecies = nspecies
+        if cf:
+            self.names = random.sample(cfnames, nspecies)
+        else:
+            self.names = names or ['Sp{0}'.format(i) for i in range(1, nspecies
+                                   + 1)]
+        if template and not isinstance(template, Tree):
+            raise TypeError('template should be \'Tree\' object. Got',
+                            type(tree))
+        self.template = template
+    
+    def coal(self):
+        taxon_set = dendropy.TaxonSet(self.names)
+        return cast(dendropy.treesim.pure_kingman(taxon_set))
+
+    def gene_tree(
+        self,
+        scale_to=None,
+        population_size=1,
+        trim_names=True,
+        ):
+        """ Using the current tree object as a species tree, generate a gene
+        tree using the constrained Kingman coalescent process from dendropy. The
+        species tree should probably be a valid, ultrametric tree, generated by
+        some pure birth, birth-death or coalescent process, but no checks are
+        made. Optional kwargs are: -- scale_to, which is a floating point value
+        to scale the total tree tip-to-root length to, -- population_size, which
+        is a floating point value which all branch lengths will be divided by to
+        convert them to coalescent units, and -- trim_names, boolean, defaults
+        to true, trims off the number which dendropy appends to the sequence
+        name """
+
+        t = self.template or self.yule()
+
+        for leaf in tree.leaf_iter():
+            leaf.num_genes = 1
+
+        tree_height = tree.seed_node.distance_from_root() \
+            + tree.seed_node.distance_from_tip()
+
+        if scale_to:
+            population_size = tree_height / scale_to
+
+        for edge in tree.preorder_edge_iter():
+            edge.pop_size = population_size
+
+        gene_tree = dendropy.treesim.constrained_kingman(tree)[0]
+
+        if trim_names:
+            for leaf in gene_tree.leaf_iter():
+                leaf.taxon.label = leaf.taxon.label.replace('\'', '').split('_'
+                        )[0]
+
+        
+
+        return {'gene_tree': cast(gene_tree), 'species_tree': t}
+
+    def rtree(self):
+        m = self.yule()
+        m.randomise_labels()
+        return m.randomise_branch_lengths()
+
+    def yule(self):
+        taxon_set = dendropy.TaxonSet(self.names)
+        return cast(dendropy.treesim.uniform_pure_birth(taxon_set))
+
+
+cfnames = [
+    'Jools', 'Jops', 'Stoo', 'Rj', 'Ubik', 'Cj', 'Chris', 'Pete',
+    'Tadger', 'Hector', 'Elroy', 'Softy', 'Mac', 'Bomber', 'Stan', 'Tosh',
+    'Brains', 'Norm', 'Buster', 'Spike', 'Browny', 'Murphy', 'Killer', 'Abdul',
+    'Spotty', 'Goofy', 'Donald', 'Windy', 'Nifta', 'Denzil', 'Cedric', 'Alf',
+    'Marty', 'Cecil', 'Wally', 'Pervy', 'Jason', 'Roy', 'Peewee', 'Arnie',
+    'Lofty', 'Tubby', 'Porky', 'Norris', 'Bugsy', 'Greg', 'Gus', 'Ginger',
+    'Eddy', 'Steve', 'Hugo', 'Zippy', 'Sonny', 'Willy', 'Mario', 'Luigi',
+    'Bo', 'Johan', 'Colin', 'Queeny', 'Morgan', 'Reg', 'Peter', 'Brett',
+    'Matt', 'Vic', 'Hut', 'Bud', 'Brad', 'Ashley', 'Les', 'Rex',
+    'Louis', 'Pedro', 'Marco', 'Leon', 'Ali', 'Tyson', 'Tiger', 'Frank',
+    'Reuben', 'Leyton', 'Josh', 'Judas', 'Aj', 'Lex', 'Butch', 'Bison',
+    'Gary', 'Luther', 'Kermit', 'Brian', 'Ray', 'Freak', 'Leroy', 'Lee',
+    'Banjo', 'Beaker', 'Basil', 'Bonzo', 'Kelvin', 'Ronnie', 'Rupert', 'Roo',
+    'Dan', 'Jimmy', 'Bob', 'Don', 'Tommy', 'Eddie', 'Ozzy', 'Paddy',
+    'Arnold', 'Tony', 'Teddy', 'Dom', 'Theo', 'Martin', 'Chunky', 'Jon',
+    'Ben', 'Girly', 'Julian', 'Pizza', 'Ciaran', 'Jock', 'Gravy', 'Trendy',
+    'Neil', 'Derek', 'Ed', 'Biff', 'Paul', 'Stuart', 'Randy', 'Loreta',
+    'Suzie', 'Pumpy', 'Urmer', 'Roger', 'Pussy', 'Meat', 'Beefy', 'Harry',
+    'Tiny', 'Howard', 'Morris', 'Thor', 'Rev', 'Duke', 'Micky', 'Chas',
+    'Melony', 'Craig', 'Sidney', 'Parson', 'Rowan', 'Smelly', 'Dok', 'Stew',
+    'Adrian', 'Pat', 'Iceman', 'Goose', 'Dippy', 'Viv', 'Fags', 'Bunty',
+    'Noel', 'Bono', 'Edge', 'Robbie', 'Sean', 'Miles', 'Jimi', 'Gordon',
+    'Val', 'Hobo', 'Fungus', 'Toilet', 'Lampy', 'Marcus', 'Pele', 'Hubert',
+    'James', 'Tim', 'Saul', 'Andy', 'Silky', 'Simon', 'Handy', 'Sid',
+    'George', 'Joff', 'Barry', 'Dick', 'Gil', 'Nick', 'Ted', 'Phil',
+    'Woody', 'Wynn', 'Alan', 'Pip', 'Mickey', 'Justin', 'Karl', 'Maddog',
+    'Horace', 'Harold', 'Gazza', 'Spiv', 'Foxy', 'Ned', 'Bazil', 'Oliver',
+    'Rett', 'Scot', 'Darren', 'Moses', 'Noah', 'Seth', 'Buddah', 'Mary',
+    'Pilot', 'Mcbeth', 'Mcduff', 'Belly', 'Mathew', 'Mark', 'Luke', 'John',
+    'Aslam', 'Ham', 'Shem', 'Joshua', 'Jacob', 'Esaw', 'Omar', 'Enoch',
+    'Obadia', 'Daniel', 'Samuel', 'Robbo', 'Joebed', 'Ismael', 'Isreal', 'Isabel',
+    'Isarat', 'Monk', 'Blip', 'Bacon', 'Danube', 'Friend', 'Darryl', 'Izzy',
+    'Crosby', 'Stills', 'Nash', 'Young', 'Cheese', 'Salami', 'Prawn', 'Radish',
+    'Egbert', 'Edwy', 'Edgar', 'Edwin', 'Edred', 'Eggpie', 'Bros', 'Sonic',
+    'Ziggy', 'Alfred', 'Siggy', 'Hilda', 'Snell', 'Sparks', 'Spook', 'Topcat',
+    'Benny', 'Dibble', 'Benker', 'Dosey', 'Beaky', 'Joist', 'Pivot', 'Tree',
+    'Bush', 'Grass', 'Seedy', 'Tin', 'Rollo', 'Zippo', 'Nancy', 'Larry',
+    'Iggy', 'Nigel', 'Jamie', 'Jesse', 'Leo', 'Virgo', 'Garth', 'Fidel',
+    'Idi', 'Che', 'Kirk', 'Spock', 'Maccoy', 'Chekov', 'Uhura', 'Bones',
+    'Vulcan', 'Fester', 'Jethro', 'Jimbob', 'Declan', 'Dalek', 'Hickey', 'Chocco',
+    'Goch', 'Pablo', 'Renoir', 'Rolf', 'Dali', 'Monet', 'Manet', 'Gaugin',
+    'Chagal', 'Kid', 'Hully', 'Robert', 'Piers', 'Raith', 'Jeeves', 'Paster',
+    'Adolf', 'Deiter', 'Deni', 'Zark', 'Wizkid', 'Wizard', 'Iain', 'Kitten',
+    'Gonner', 'Waster', 'Loser', 'Fodder',
+]
