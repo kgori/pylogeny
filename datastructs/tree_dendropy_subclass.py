@@ -470,6 +470,12 @@ class Tree(dendropy.Tree):
         return tree
 
     def prune(self, edge, length=None):
+        """ Prunes a subtree from the main Tree, retaining an edge length
+        specified by length (defaults to entire length). The length is sanity-
+        checked by edge_length_check, to ensure it is within the bounds 
+        [0, edge.length].
+
+        Returns the basal node of the pruned subtree. """
 
         length = length or edge.length
         edge_length_check(length, edge)
@@ -480,6 +486,9 @@ class Tree(dendropy.Tree):
         return n
 
     def regraft(self, edge, node, length=None):
+        """ Grafts a node onto an edge of the Tree, at a point specified by
+        length (defaults to middle of edge). """
+
         length = length or edge.length/2. # Length measured from head to tail
         edge_length_check(length, edge)
         rootcheck(edge, 'SPR regraft is not allowed on the root edge')
@@ -493,24 +502,37 @@ class Tree(dendropy.Tree):
         self.update_splits()
 
     def spr(self, pruning_edge, regrafting_edge, length1=None, length2=None):
-        try:
+        """ Combines self.prune() and self.regraft() methods to perform
+        Subtree-Prune and Regraft (SPR) operation. 
+
+        Notes
+        N1: Sanity check that we don't try to regraft to pruned subtree onto
+        an edge that is in the pruned subtree
+        N2: Adjustment to account for the fact the the pruned edge's parent
+        edge is deleted in the prune operation.
+        """
+        try: # See note N1
             descendents = [n.edge for n in 
                 pruning_edge.head_node.preorder_iter()]
             assert regrafting_edge not in descendents
         except AssertionError:
             raise TreeEdgeError('Regraft edge is on the pruned subtree')
 
-        sister_nodes = pruning_edge.head_node.sister_nodes()
+        sister_nodes = pruning_edge.head_node.sister_nodes() # See note N2
         if (regrafting_edge == pruning_edge.tail_node.edge
             and len(sister_nodes) == 1):
             regrafting_edge = sister_nodes[0].edge
-            length2 += sister_nodes[0].edge_length
-        n = self.prune(pruning_edge, length1)
+            length2 += sister_nodes[0].edge_length # end note N2
         
+        n = self.prune(pruning_edge, length1)        
         self.regraft(regrafting_edge, n, length2)
 
     def rspr(self, inplace=False, disallow_sibling_sprs=False):
-    
+        """ Random SPR, with prune and regraft edges chosen randomly, and
+        lengths drawn uniformly from the available edge lengths.
+
+        N1: disallow_sibling_sprs prevents sprs that don't alter the topology
+        of the tree """
         if not inplace:
             tree = self.copy()
         else:
@@ -520,7 +542,7 @@ class Tree(dendropy.Tree):
                  if e.head_node and e.tail_node]
         pruning_edge = random.choice(edges)
         
-        if disallow_sibling_sprs:
+        if disallow_sibling_sprs: # See note N1
             for e in pruning_edge.adjacent_edges:
                 edges.remove(e)
 
@@ -559,7 +581,7 @@ class Tree(dendropy.Tree):
                  |                           D
                  D
 
-        To reverse this with Tree.reroot_at_edge(edge, length1, length2, ...)
+        Reverse this with Tree.reroot_at_edge(edge, length1, length2, ...)
         """
         root_edge = self.seed_node.edge
         lengths = dict([(edge, edge.length) for edge 
