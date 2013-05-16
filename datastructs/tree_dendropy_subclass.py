@@ -5,10 +5,31 @@ import re
 import random
 from ..errors import FileError, filecheck
 
+class TreeEdgeError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return self.msg
+
+def rootcheck(edge, msg='This is the root edge'):
+    if not edge.tail_node:
+        raise TreeEdgeError(msg)
+
+def edge_length_check(length, edge):
+    try:
+        assert 0 <= length <= edge.length
+    except AssertionError:
+        if length < 0:
+            raise TreeEdgeError('Negative edge-lengths are disallowed')
+        raise TreeEdgeError(
+            'This edge isn\'t long enough to prune at length {0}\n'
+            '(Edge length = {1})'.format(length, edge.length))
+
 def cast(dendropy_tree):
     return Tree(dendropy_tree.as_newick_string() + ';')
 
-class rSPR(object):
+class SPR(object):
 
     """ Shipped out the random ewSPR operation to this class as the code is 
     long-winded (probably more than it needs to be) """
@@ -104,23 +125,28 @@ class rSPR(object):
             print 'Receiver group = {0}'.format(prune_taxa)
         return (prune, regraft)
 
-    def add_node(self, time, regraft_node):
-        parent_node = regraft_node[0].parent_node
-        new_node = parent_node.add_child(dpy.Node(), edge_length=time
-                - regraft_node[1])
-        tree.reindex_subcomponent_taxa()
-        tree.update_splits()
-        return new_node
+    def prune(edge, length=None):
 
-    def prunef(self, node):
-        self.tree.prune_subtree(node, update_splits=False,
-                           delete_outdegree_one=True)
+        length = length or edge.length
+        edge_length_check(length, edge)
 
-    def regraftf(self, time, target_node, child_node):
+        n = edge.head_node
+        self.tree.prune_subtree(n)
+        n.edge_length = length
+        return n
 
-        target_node.add_child(child_node[0], edge_length=child_node[2]
-                              - time)
-        return tree
+    def regraft(edge, node, length=None):
+        length = length or edge.length/2. # Length measured from head to tail
+        edge_length_check(length, edge)
+        rootcheck(edge, 'SPR regraft is not allowed on the root edge')
+
+        t = edge.tail_node
+        h = edge.head_node
+        new = t.new_child(edge_length=edge.length-length)
+        t.remove_child(h)
+        new.add_child(h, edge_length=length)
+        new.add_child(node)
+        self.tree.update_splits()   
 
     def rspr(self, time=None, disallow_sibling_SPRs=False, verbose=False):
 
@@ -198,13 +224,11 @@ class Tree(dendropy.Tree):
         if self.name:
             s += 'Name:\t{0}\n'.format(self.name)
 
-        s += \
-            '''Program:\t{0}
-Score:\t{1}
-Rooted:\t{2}
-Tree:\t]{3}
-'''.format(self.program,
-                self.score, self.rooted, self.newick)
+        s += ('Program:\t{0}'
+            'Score:\t{1}'
+            'Rooted:\t{2}'
+            'Tree:\t]{3})'.format(self.program,
+                self.score, self.rooted, self.newick))
 
         return s
 
@@ -355,6 +379,10 @@ Tree:\t]{3}
                        and e.head_node and e.tail_node]
         return inner_edges
 
+    def get_nonroot_edges(self):
+        return [e for e in self.preorder_edge_iter()
+             if e.head_node and e.tail_node]
+
     def get_children(tree, inner_edge):
         """ Given an edge in the tree, returns the child nodes of the head and
         the tail nodes of the edge, for instance:
@@ -388,7 +416,7 @@ Tree:\t]{3}
         head_subtree,
         tail_subtree,
         ):
-        """ Nearest-neighbour interchange (NNI) operation.
+        """ *Inplace* Nearest-neighbour interchange (NNI) operation.
         
         An edge in the tree has two or more subtrees at each end (ends are
         designated 'head' and 'tail'). The NNI operation exchanges one of the
@@ -400,7 +428,7 @@ Tree:\t]{3}
              /    \                          /    \     |
             B      D                        B      D
         
-        This operation acts on the tree inplace.
+        
         """
         
         # This implementation works on unrooted Trees. If the input Tree is
@@ -439,6 +467,71 @@ Tree:\t]{3}
         (h, t) = (random.choice(children['head']), random.choice(children['tail'
                   ]))
         tree.nni(e, h, t)
+        return tree
+
+
+    def prune(self, edge, length=None):
+
+        length = length or edge.length
+        edge_length_check(length, edge)
+
+        n = edge.head_node
+        self.prune_subtree(n)
+        n.edge_length = length
+        return n
+
+    def regraft(self, edge, node, length=None):
+        length = length or edge.length/2. # Length measured from head to tail
+        edge_length_check(length, edge)
+        rootcheck(edge, 'SPR regraft is not allowed on the root edge')
+
+        t = edge.tail_node
+        h = edge.head_node
+        new = t.new_child(edge_length=edge.length-length)
+        t.remove_child(h)
+        new.add_child(h, edge_length=length)
+        new.add_child(node)
+        self.update_splits()
+
+    def spr(self, pruning_edge, regrafting_edge, length1=None, length2=None):
+        try:
+            descendents = [n.edge for n in 
+                pruning_edge.head_node.preorder_iter()]
+            assert regrafting_edge not in descendents
+        except AssertionError:
+            raise TreeEdgeError('Regraft edge is on the pruned subtree')
+
+        sister_nodes = pruning_edge.head_node.sister_nodes()
+        if regrafting_edge == pruning_edge.tail_node.edge and len(sister_nodes) == 1:
+            length2 += sister_nodes[0].length
+        n = self.prune(pruning_edge, length1)
+        
+        self.regraft(regrafting_edge, n, length2)
+
+    def rspr(self, inplace=False, disallow_sibling_sprs=False):
+    
+        if not inplace:
+            tree = self.copy()
+        else:
+            tree = self
+        
+        edges = [e for e in tree.preorder_edge_iter()
+                 if e.head_node and e.tail_node]
+        pruning_edge = random.choice(edges)
+        
+        if disallow_sibling_sprs:
+            for e in pruning_edge.adjacent_edges:
+                edges.remove(e)
+
+        for n in pruning_edge.head_node.preorder_iter():
+            edges.remove(n.edge)
+
+        regrafting_edge = random.choice(edges)
+
+        length1 = random.uniform(0, pruning_edge.length)
+        length2 = random.uniform(0, regrafting_edge.length)
+
+        tree.spr(pruning_edge, regrafting_edge, length1, length2)
         return tree
 
     def reversible_deroot(self):
@@ -502,6 +595,19 @@ Tree:\t]{3}
 
     def ntaxa(self):
         return len(self)
+
+    def _name_things(self):
+        """ Easy names for debugging """
+        edges = {}
+        nodes = {None: 'root'}
+        for n in self.postorder_node_iter():
+            nodes[n] = '.'.join([str(x.taxon) for x in n.leaf_nodes()])
+        for e in self.preorder_edge_iter():
+            edges[e] = ' ---> '.join([nodes[e.tail_node], nodes[e.head_node]])
+
+        r_edges = {value: key for key,value in edges.items()}
+        r_nodes = {value: key for key,value in nodes.items()}
+        return edges, nodes, r_edges, r_nodes
 
     @classmethod
     def new_tree_from_phyml_results(
