@@ -469,7 +469,6 @@ class Tree(dendropy.Tree):
         tree.nni(e, h, t)
         return tree
 
-
     def prune(self, edge, length=None):
 
         length = length or edge.length
@@ -502,8 +501,10 @@ class Tree(dendropy.Tree):
             raise TreeEdgeError('Regraft edge is on the pruned subtree')
 
         sister_nodes = pruning_edge.head_node.sister_nodes()
-        if regrafting_edge == pruning_edge.tail_node.edge and len(sister_nodes) == 1:
-            length2 += sister_nodes[0].length
+        if (regrafting_edge == pruning_edge.tail_node.edge
+            and len(sister_nodes) == 1):
+            regrafting_edge = sister_nodes[0].edge
+            length2 += sister_nodes[0].edge_length
         n = self.prune(pruning_edge, length1)
         
         self.regraft(regrafting_edge, n, length2)
@@ -568,7 +569,6 @@ class Tree(dendropy.Tree):
                             & set(lengths.keys())).pop()
         return (reroot_edge, reroot_edge.length - lengths[reroot_edge], 
             lengths[reroot_edge])
-
 
     def write_to_file(
         self,
@@ -662,6 +662,25 @@ class Tree(dendropy.Tree):
         cp = self._unify_taxon_sets(other)
         return self.robinson_foulds_distance(cp)
 
+    @classmethod
+    def new_rtree(cls, nspecies=16, **kwargs):
+        tg = TreeGen(nspecies, **kwargs)
+        return tg.rtree()
+
+    @classmethod
+    def new_coal(cls, nspecies=16, **kwargs):
+        tg = TreeGen(nspecies, **kwargs)
+        return tg.coal()
+
+    @classmethod
+    def new_yule(cls, nspecies=16, **kwargs):
+        tg = TreeGen(nspecies, **kwargs)
+        return tg.yule()
+
+    def sample_gene_tree(self, **kwargs):
+        tg = TreeGen(template=self)
+        return tg.gene_tree(**kwargs)
+
 class TreeGen(object):
 
     def __init__(
@@ -724,8 +743,6 @@ class TreeGen(object):
             for leaf in gene_tree.leaf_iter():
                 leaf.taxon.label = leaf.taxon.label.replace('\'', '').split('_'
                         )[0]
-
-        
 
         return {'gene_tree': cast(gene_tree), 'species_tree': t}
 
