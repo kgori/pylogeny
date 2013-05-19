@@ -13,10 +13,12 @@ class TreeEdgeError(Exception):
         return self.msg
 
 def rootcheck(edge, msg='This is the root edge'):
+    """ Raises error if edge is the root edge (has no tail node) """
     if not edge.tail_node:
         raise TreeEdgeError(msg)
 
 def edge_length_check(length, edge):
+    """ Raises error if length is not in interval [0, edge.length] """
     try:
         assert 0 <= length <= edge.length
     except AssertionError:
@@ -27,31 +29,34 @@ def edge_length_check(length, edge):
             '(Edge length = {1})'.format(length, edge.length))
 
 def cast(dendropy_tree):
+    """ Cast dendropy.Tree instance as Tree instance """
     return Tree(dendropy_tree.as_newick_string() + ';')
 
-class SPR(object):
+class LGT(object):
 
-    """ Shipped out the random ewSPR operation to this class as the code is 
-    long-winded (probably more than it needs to be) """
+    """ This class provides a random LGT implementation using SPRs from an older
+    version of this software. I've kept it for now because it works, and to 
+    reimplement from scratch would be inconvenient, but is most definitely on 
+    the 'to do' list """ 
 
-    def __init__(self, tree):
+    def __init__(self, tree, verbosity=0):
         self.tree = tree
+        self.verbosity = verbosity
 
-    def get_blocks(self, include_leaf_nodes=True):
+    def get_blocks(self):
         dists = []
         blocks = {}
-        if include_leaf_nodes:
-            iterator = self.tree.preorder_node_iter()
-        else:
-            iterator = self.tree.preorder_internal_node_iter()
-        for n in iterator:
-            node_height = n.distance_from_root()
+        rootlen = self.tree.seed_node.edge_length
+        
+        for n in self.tree.preorder_node_iter():
+            node_height = n.distance_from_root() - rootlen
             if not n.parent_node:
+                continue
                 root_height = n.distance_from_root()
                 self.tree_height = root_height + n.distance_from_tip()
                 parent_height = 0
             else:
-                parent_height = n.parent_node.distance_from_root()
+                parent_height = n.parent_node.distance_from_root() - rootlen
             node_height = round(node_height, 8)
             parent_height = round(parent_height, 8)
 
@@ -66,6 +71,8 @@ class SPR(object):
                     blocks[time].append(node)
 
         dists.sort(key=lambda x: x[2])
+        if self.verbosity > 0:
+            print blocks, dists
         return (blocks, dists)
 
     def weight_by_branches(self, blocks):
@@ -77,9 +84,11 @@ class SPR(object):
             weighted_range = time_range * num_branches
             weighted_intervals[i] = weighted_range + weighted_intervals[i
                     - 1]
+        if self.verbosity > 0:
+            print weighted_intervals
         return weighted_intervals
 
-    def get_time(self, blocks, weights=None, verbose=False):
+    def get_time(self, blocks, weights=None):
         d = sorted(blocks.keys())
         if weights:
             samp = random.uniform(weights[0], weights[-1])
@@ -93,98 +102,58 @@ class SPR(object):
         else:
             time = random.uniform(d[0], d[-1])
 
-        if verbose: 
+        if self.verbosity > 0: 
             print 'LGT event at time: {0}'.format(time)
 
         return time
 
-    def choose_prune_and_regraft_nodes(self, time, blocks,
-            disallow_sibling_SPRs, verbose=False):
+    def choose_prune_and_regraft_nodes(self, time, dists):
         matching_branches = [x for x in dists if x[1] < time < x[2]]
+        if self.verbosity > 0:
+            print matching_branches
 
         prune = random.sample(matching_branches, 1)[0]
-
-        if disallow_sibling_SPRs:
-            siblings = prune[0].sister_nodes()
-            for br in matching_branches:
-                if br[0] in siblings:
-                    matching_branches.remove(br)
+        if self.verbosity > 0:
+            print prune
+        siblings = prune[0].sister_nodes()
+        for br in matching_branches:
+            if br[0] in siblings:
+                matching_branches.remove(br)
 
         matching_branches.remove(prune)
+        if self.verbosity > 0:
+            print matching_branches
 
         if matching_branches == []:
-            if verbose: print 'No non-sibling branches available'
+            if self.verbosity > 0:
+                print 'No non-sibling branches available'
             return (None, None)
 
         regraft = random.sample(matching_branches, 1)[0]
 
         prune_taxa = [n.taxon.label for n in prune[0].leaf_iter()]
         regraft_taxa = [n.taxon.label for n in regraft[0].leaf_iter()]
-        if verbose:
+        if self.verbosity:
             print 'Donor group = {0}'.format(regraft_taxa)
             print 'Receiver group = {0}'.format(prune_taxa)
-        return (prune, regraft)
+        return (prune, regraft)  
 
-    def prune(edge, length=None):
+    def lgt(self, time=None):
+        """ Known bugs: will hang at P1 if time in range [0 - depth of 1st node]
+        """
 
-        length = length or edge.length
-        edge_length_check(length, edge)
-
-        n = edge.head_node
-        self.tree.prune_subtree(n)
-        n.edge_length = length
-        return n
-
-    def regraft(edge, node, length=None):
-        length = length or edge.length/2. # Length measured from head to tail
-        edge_length_check(length, edge)
-        rootcheck(edge, 'SPR regraft is not allowed on the root edge')
-
-        t = edge.tail_node
-        h = edge.head_node
-        new = t.new_child(edge_length=edge.length-length)
-        t.remove_child(h)
-        new.add_child(h, edge_length=length)
-        new.add_child(node)
-        self.tree.update_splits()   
-
-    def rspr(self, time=None, disallow_sibling_SPRs=False, verbose=False):
-
-        # MAIN
-        tree = self.convert_to_dendropy_tree()
-        tree.is_rooted = utils_dpy.check_rooted(self.tree.newick)
-
-        (blocks, dists) = self.get_blocks(tree)
+        (blocks, dists) = self.get_blocks()
         if not time:
             weights = self.weight_by_branches(blocks)
-            time = self.get_time(blocks, weights, verbose=verbose)
-        (p, r) = self.choose_prune_and_regraft_nodes(time, dists,
-                disallow_sibling_SPRs=disallow_sibling_SPRs, verbose=verbose)
-
-        if (p, r) == (None, None):
-            return self.spr(disallow_sibling_SPRs=disallow_sibling_SPRs)
-
-        new_node = self.add_node(tree, time, r)
-        self.prunef(tree, p[0])
-
-        self.prunef(tree, r[0])
-
-        self.regraftf(tree, time, new_node, p)
-
-        self.regraftf(tree, time, new_node, r)
-
-        tree.reindex_subcomponent_taxa()
-        tree.update_splits()
-
-        newick = self.dendropy_as_newick(tree)
-        if tree.is_rooted:
-            newick = '[&R] ' + newick
-
-        tree_copy = self.tree.copy() 
-        tree_copy.newick = newick
-        self.tree = tree_copy
-        return self.tree
-
+            time = self.get_time(blocks, weights)
+        (p, r) = (None, None)
+        while (p, r) == (None, None): #P1
+            (p, r) = self.choose_prune_and_regraft_nodes(time, dists)
+        pruning_edge = p[0].edge
+        regrafting_edge = r[0].edge
+        length1 = p[2] - time 
+        length2 = r[2] - time
+        return pruning_edge, regrafting_edge, length1, length2
 
 class Tree(dendropy.Tree):
 
@@ -206,6 +175,9 @@ class Tree(dendropy.Tree):
         super(Tree, self).__init__()
         if newick:
             self.read_from_string(newick, 'newick', **kwargs)
+            if self.rooted:
+                self.is_rooted = True
+                self.update_splits()
         self.score = score
         self.output = output
         self.program = program
@@ -592,6 +564,25 @@ class Tree(dendropy.Tree):
         return (reroot_edge, reroot_edge.length - lengths[reroot_edge], 
             lengths[reroot_edge])
 
+    def rlgt(self, inplace=False, time=None, verbosity=0):
+        """ Uses class LGT to perform random lateral gene transfer on 
+        ultrametric tree """
+
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+
+        try:
+            self.calc_node_ages() # Fails with ValueError if tree is not 
+        except ValueError:        # ultrametric
+            raise
+
+        lgt = LGT(t)
+        pr_ed, rg_ed, l1, l2 = lgt.lgt(time)
+        t.spr(pr_ed, rg_ed, l1, l2)
+        return t
+
     def write_to_file(
         self,
         outfile,
@@ -712,6 +703,17 @@ class TreeGen(object):
         template=None,
         cf=False,
         ):
+
+        """ Generates a new Tree using a coalescent process (coal method), a
+        Yule pure-birth process (yule method), a random tree (rtree), or by
+        sampling a gene tree from a template species tree using a constrained
+        Kingman coalescent.
+
+        nspecies = number of taxa in the tree
+        names = a list of leaf names (names will be generated if not supplied)
+        template = a template species tree for drawing gene trees
+        cf = set to true to generate leaf names from the list of character names
+        from Cannon Fodder """
 
         self.nspecies = nspecies
         if cf:
