@@ -62,6 +62,17 @@ class TreeManip(object):
         self.tree = tree_copy
         return self.tree
 
+    def prune_to_subset(self, subset):
+        t = utils_dpy.convert_to_dendropy_tree(self.tree)
+        labels = utils_dpy.taxon_labels(t)
+        if not subset.issubset(labels):
+            print '"subset" is not a subset'
+        else: 
+            t.retain_taxa_with_labels(subset)
+            self.tree.newick = self.dendropy_as_newick(t)
+        return self.tree
+
+
     def randomise_labels(self):
         t = self.convert_to_dendropy_tree()
         names = [l.taxon.label for l in t.leaf_iter()]
@@ -176,154 +187,7 @@ class TreeManip(object):
         self.tree = tree_copy
         return self.tree
 
-    def spr(self, time=None, disallow_sibling_SPRs=False, verbose=False):
-
-        def _get_blocks(tree, include_leaf_nodes=True):
-            dists = []
-            blocks = {}
-            if include_leaf_nodes:
-                iterator = tree.preorder_node_iter()
-            else:
-                iterator = tree.preorder_internal_node_iter()
-            for n in iterator:
-                node_height = n.distance_from_root()
-                if not n.parent_node:
-                    root_height = n.distance_from_root()
-                    tree_height = root_height + n.distance_from_tip()
-                    parent_height = 0
-                else:
-                    parent_height = n.parent_node.distance_from_root()
-                node_height = round(node_height, 8)
-                parent_height = round(parent_height, 8)
-
-                if not node_height in blocks:
-                    blocks[node_height] = []
-
-                dists.append((n, parent_height, node_height))
-
-            for time in blocks:
-                for (node, parent_h, node_h) in dists:
-                    if parent_h < time <= node_h:
-                        blocks[time].append(node)
-
-            dists.sort(key=lambda x: x[2])
-            return (blocks, dists)
-
-        def _weight_by_branches(blocks):
-            intervals = sorted(blocks.keys())
-            weighted_intervals = [0] + [None] * (len(intervals) - 1)
-            for i in range(1, len(intervals)):
-                time_range = intervals[i] - intervals[i - 1]
-                num_branches = len(blocks[intervals[i]])
-                weighted_range = time_range * num_branches
-                weighted_intervals[i] = weighted_range + weighted_intervals[i
-                        - 1]
-            return weighted_intervals
-
-        def _get_time(blocks, weights=None, verbose=False):
-            d = sorted(blocks.keys())
-            if weights:
-                samp = random.uniform(weights[0], weights[-1])
-                for i in range(len(weights) - 1):
-                    if weights[i + 1] >= samp > weights[i]:
-                        interval = weights[i + 1] - weights[i]
-                        proportion = (samp - weights[i]) / interval
-                        break
-                drange = d[i + 1] - d[i]
-                time = drange * proportion + d[i]
-            else:
-                time = random.uniform(d[0], d[-1])
-
-            if verbose: 
-                print 'LGT event at time: {0}'.format(time)
-
-            return time
-
-        def _choose_prune_and_regraft_nodes(time, blocks,
-                disallow_sibling_SPRs, verbose=False):
-            matching_branches = [x for x in dists if x[1] < time < x[2]]
-
-            prune = random.sample(matching_branches, 1)[0]
-
-            if disallow_sibling_SPRs:
-                siblings = prune[0].sister_nodes()
-                for br in matching_branches:
-                    if br[0] in siblings:
-                        matching_branches.remove(br)
-
-            matching_branches.remove(prune)
-
-            if matching_branches == []:
-                if verbose: print 'No non-sibling branches available'
-                return (None, None)
-
-            regraft = random.sample(matching_branches, 1)[0]
-
-            prune_taxa = [n.taxon.label for n in prune[0].leaf_iter()]
-            regraft_taxa = [n.taxon.label for n in regraft[0].leaf_iter()]
-            if verbose:
-                print 'Donor group = {0}'.format(regraft_taxa)
-                print 'Receiver group = {0}'.format(prune_taxa)
-            return (prune, regraft)
-
-        def _add_node(tree, time, regraft_node):
-            parent_node = regraft_node[0].parent_node
-            new_node = parent_node.add_child(dpy.Node(), edge_length=time
-                    - regraft_node[1])
-            tree.reindex_subcomponent_taxa()
-            tree.update_splits()
-            return new_node
-
-        def _prunef(tree, node):
-            tree.prune_subtree(node, update_splits=False,
-                               delete_outdegree_one=True)
-
-        def _regraftf(
-            tree,
-            time,
-            target_node,
-            child_node,
-            ):
-
-            target_node.add_child(child_node[0], edge_length=child_node[2]
-                                  - time)
-            return tree
-
-        # MAIN
-        tree = self.convert_to_dendropy_tree()
-        tree.is_rooted = utils_dpy.check_rooted(self.tree.newick)
-
-        (blocks, dists) = _get_blocks(tree)
-        if not time:
-            weights = _weight_by_branches(blocks)
-            time = _get_time(blocks, weights, verbose=verbose)
-        (p, r) = _choose_prune_and_regraft_nodes(time, dists,
-                disallow_sibling_SPRs=disallow_sibling_SPRs, verbose=verbose)
-
-        if (p, r) == (None, None):
-            return self.spr(disallow_sibling_SPRs=disallow_sibling_SPRs)
-
-        new_node = _add_node(tree, time, r)
-        _prunef(tree, p[0])
-
-        _prunef(tree, r[0])
-
-        _regraftf(tree, time, new_node, p)
-
-        _regraftf(tree, time, new_node, r)
-
-        tree.reindex_subcomponent_taxa()
-        tree.update_splits()
-
-        newick = self.dendropy_as_newick(tree)
-        if tree.is_rooted:
-            newick = '[&R] ' + newick
-
-        tree_copy = self.tree.copy() 
-        tree_copy.newick = newick
-        self.tree = tree_copy
-        return self.tree
-
+    
 
 class Tree(object):
 
@@ -377,11 +241,38 @@ class Tree(object):
                    self.program == other.program, self.score == other.score,
                    self.output == other.output])
 
+
+    def __len__(self):
+        return utils_dpy.ntaxa(self)
+
+    def __and__(self, other):
+        return self.intersection(other)
+
     def copy(self):
         copy = self.__new__(type(self))
         copy.__dict__ = {key: value for (key, value) in self.__dict__.items()}
         return copy
 
+
+    def labels(self):
+        t = utils_dpy.convert_to_dendropy_tree(self)
+        return utils_dpy.taxon_labels(t)
+
+    def intersection(self, other):
+        taxa1 = self.labels()
+        taxa2 = other.labels()
+        return taxa1 & taxa2
+
+    def pruned_pair(self, other):
+        common = self & other
+        p1 = self.prune_to_subset(common)
+        p2 = other.prune_to_subset(common)
+        return (p1, p2)
+
+    def prune_to_subset(self, subset):
+        t = TreeManip(self)
+        tree = t.prune_to_subset(subset)
+        return tree
 
     def write_to_file(
         self,
@@ -483,6 +374,12 @@ class Tree(object):
     def strip(self):
         return TreeManip(self).strip()
 
+    def length(self):
+        return utils_dpy.length(self)
+
+    def ntaxa(self):
+        return utils_dpy.ntaxa(self)
+
     def print_plot(self):
         utils_dpy.print_plot(self)
 
@@ -532,6 +429,8 @@ class Tree(object):
         return g.rtree()
 
     def gene_tree(self, scale_to=None):
+        """ Returns a constrained Kingman gene tree using self as species 
+        tree. Optionally rescales to height given by scale_to parameter """
         g = TreeGen(template=self)
         return g.gene_tree(scale_to)['gene_tree']
 
