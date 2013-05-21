@@ -77,6 +77,17 @@ class RangeError(Exception):
         return '\'{0}\' is outside the valid range {1} - {2}'.format(self.value,
                 self.lower, self.upper)
 
+class TreeBuildingError(Exception):
+
+    """ Raise exception when tree-building program fails """
+
+    def __init__(self, error, program):
+        self.error = error
+        self.program = program
+
+    def __str__(self):
+        return '{0} failed: Error message:\n{1}'.format(self.program,
+            self.error)
 
 def filecheck(filename):
     if not os.path.isfile(filename):

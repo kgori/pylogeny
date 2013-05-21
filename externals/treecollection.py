@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 
 from external import TreeSoftware
-from ..errors import filecheck
+from ..errors import filecheck, TreeBuildingError
 from ..datastructs.tree import Tree
 from ..utils import fileIO
-from ..utils import dpy
 from ..utils.printing import print_and_return
 from phyml import Phyml
 
 
 class TreeCollection(TreeSoftware):
+
+    """ __init__ takes a Seq sequence record as 
+    first (only) positional argument, and supplied_binary= and 
+    tmpdir= as keyword arguments """
 
     default_binary = 'TreeCollection'
     local_dir = fileIO.path_to(__file__)
@@ -33,15 +36,18 @@ class TreeCollection(TreeSoftware):
                 self.record.name))
         elif verbosity > 1:
             print 'Running TreeCollection on {0}'.format(self.record.name)
-        (stdout, stderr) = self.call()
-        self.clean()
-        if verbosity > 1:
-            print stdout, stderr
-        (score, tree) = self.read(stdout)
-        tree_object = Tree(tree, score, program=fileIO.basename(self.binary),
-                           name=self.record.name, output=stdout).scale(0.01)
-        self.record.tree = tree_object
-        return tree_object
+        try:
+            (stdout, stderr) = self.call()
+            self.clean()
+            if verbosity > 1:
+                print stdout, stderr
+            (score, tree) = self.read(stdout)
+            tree_object = Tree(tree, score, program=fileIO.basename(self.binary),
+                               name=self.record.name, output=stdout).scale(0.01)
+            self.record.tree = tree_object
+            return tree_object
+        except:
+            raise TreeBuildingError(stderr, fileIO.basename(self.binary))
 
     def write(self):
         """ Write the distance-variance (dv) file, the labels file and the map
@@ -98,7 +104,7 @@ class TreeCollection(TreeSoftware):
     def nj_tree(self):
         p = Phyml(self.record)
         tree = p.run('nj')
-        tree.newick = dpy.bifurcate_base(tree.newick)
+        tree.reroot_at_midpoint()
         return tree
 
     def write_guidetree(self, tree=None):

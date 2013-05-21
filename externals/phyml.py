@@ -9,6 +9,10 @@ import re
 
 class Phyml(TreeSoftware):
 
+    """ __init__ takes a Seq sequence record as 
+    first (only) positional argument, and supplied_binary= and 
+    tmpdir= as keyword arguments """
+
     default_binary = 'phyml'
     score_regex = re.compile('(?<=Log-likelihood: ).+')
     local_dir = fileIO.path_to(__file__)
