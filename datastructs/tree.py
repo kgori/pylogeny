@@ -657,23 +657,48 @@ class Tree(dendropy.Tree):
         return cls(newick=newick, score=score, output=stats, program=program,
             name=name)
 
+    ### DISTANCE CALCULATIONS
+    # _unify_taxon_sets() might not be necessary - can't seem to reproduce
+    # the bug that made me introduce it
+
     def _unify_taxon_sets(self, other):
         if other.taxon_set is not self.taxon_set:
             return self.__class__(other.newick, taxon_set=self.taxon_set)
         else:
             return other
 
-    def rfdist(self, other):
+    def rfdist_(self, other):
         cp = self._unify_taxon_sets(other)
         return self.symmetric_difference(cp)
 
-    def eucdist(self, other):
+    def rfdist(self, other):
+        try:
+            return self.symmetric_difference(other)
+        except:
+            print 'ERROR!'
+            return self.rfdist_(other)
+
+    def eucdist_(self, other):
         cp = self._unify_taxon_sets(other)
         return self.euclidean_distance(cp)
 
-    def wrfdist(self, other):
+    def eucdist(self, other):
+        try:
+            return self.euclidean_distance(other)
+        except:
+            print 'ERROR!'
+            return self.eucdist_(other)
+
+    def wrfdist_(self, other):
         cp = self._unify_taxon_sets(other)
         return self.robinson_foulds_distance(cp)
+
+    def wrfdist(self, other):
+        try:
+            return self.robinson_foulds_distance(other)
+        except:
+            print 'ERROR!'
+            return self.wrfdist_(other)
 
     @classmethod
     def new_rtree(cls, nspecies=16, **kwargs):
