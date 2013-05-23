@@ -7,6 +7,7 @@ __all__ = [
     'DirectoryError',
     'OptionError',
     'RangeError',
+    'TreeBuildingError',
     'filecheck',
     'filequit',
     'directorymake',
