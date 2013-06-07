@@ -3,30 +3,23 @@
 import os
 import sys
 
-__all__ = ['print_and_return', 'blank_line', 'restart_line', 'screen_width']
+__all__ = ['print_and_return']
 
 
 def print_and_return(s):
-    blank_line()
-    sys.stdout.write(str(s))
-    sys.stdout.flush()
-    restart_line()
-
-
-def blank_line():
-    sys.stdout.write(' ' * screen_width())
-    sys.stdout.flush()
-    restart_line()
-
-
-def restart_line():
-    sys.stdout.write('\r')
+    sys.stdout.write('\r\x1b[K{0}'.format(s)) #\x1b[K = Esc+[K = clear line
     sys.stdout.flush()
 
+if __name__ == '__main__':
+    #TEST
+    import time
 
-def screen_width():
-    try:
-        (_, c) = os.popen('stty size', 'r').read().split()
-        return int(c)
-    except:
-        return 80
+    for i in range(1,11):
+        print_and_return(i)  
+        time.sleep(0.3)
+    print  
+
+    for i in range(1,21):
+        print_and_return('.'*(22-i-len(str(i)))+str(i))
+        time.sleep(0.3)
+    print 
