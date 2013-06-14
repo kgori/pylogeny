@@ -5,7 +5,7 @@ import re
 import random
 from ..errors import FileError, filecheck
 
-class TreeEdgeError(Exception):
+class TreeError(Exception):
     def __init__(self, msg):
         self.msg = msg
 
@@ -15,7 +15,7 @@ class TreeEdgeError(Exception):
 def rootcheck(edge, msg='This is the root edge'):
     """ Raises error if edge is the root edge (has no tail node) """
     if not edge.tail_node:
-        raise TreeEdgeError(msg)
+        raise TreeError(msg)
 
 def edge_length_check(length, edge):
     """ Raises error if length is not in interval [0, edge.length] """
@@ -23,8 +23,8 @@ def edge_length_check(length, edge):
         assert 0 <= length <= edge.length
     except AssertionError:
         if length < 0:
-            raise TreeEdgeError('Negative edge-lengths are disallowed')
-        raise TreeEdgeError(
+            raise TreeError('Negative edge-lengths are disallowed')
+        raise TreeError(
             'This edge isn\'t long enough to prune at length {0}\n'
             '(Edge length = {1})'.format(length, edge.length))
 
@@ -196,10 +196,10 @@ class Tree(dendropy.Tree):
         if self.name:
             s += 'Name:\t{0}\n'.format(self.name)
 
-        s += ('Program:\t{0}'
-            'Score:\t{1}'
-            'Rooted:\t{2}'
-            'Tree:\t]{3})'.format(self.program,
+        s += ('Program:\t{0}\n'
+            'Score:\t{1}\n'
+            'Rooted:\t{2}\n'
+            'Tree:\t]{3}'.format(self.program,
                 self.score, self.rooted, self.newick))
 
         return s
@@ -216,14 +216,27 @@ class Tree(dendropy.Tree):
         """
         return self.intersection(other)
 
-    def copy(self):
-        """ Returns an independent copy of self """
-        copy = self.__class__(self.newick, self.score, self.output,
-                              self.program, self.name)
-        return copy
+    def __xor__(self, other):
+        return self.labels ^ other.labels
+
+    @property
+    def labels(self):
+        """ Returns the taxon set of the tree (same as the label- or 
+        leaf-set) """
+        return set([n.taxon.label for n in self.leaf_nodes()])
 
     @property
     def newick(self):
+        """ 
+        For more control the dendropy method self.as_string('newick', **kwargs)
+        can be used.
+        KWargs include:
+            internal_labels [True/False]  - turn on/off bootstrap labels
+            suppress_rooting [True/False] - turn on/off [&U] or [&R] rooting 
+                                            state labels
+            edge_label_compose_func      - function to convert edge lengths:
+                                            takes edge as arg, returns string
+        """
         n = self.as_newick_string()
         if n:
             return (n if n.endswith(';') else n + ';')
@@ -242,12 +255,6 @@ class Tree(dendropy.Tree):
         at the root. """
         return (len(self.seed_node.child_nodes()) == 2 if self.newick else None)
 
-    @property
-    def labels(self):
-        """ Returns the taxon set of the tree (same as the label- or 
-        leaf-set) """
-        return set([n.taxon.label for n in self.leaf_nodes()])
-
     @classmethod
     def bifurcate_base(cls, newick):
         """ Rewrites a newick string so that the base is a bifurcation
@@ -264,96 +271,11 @@ class Tree(dendropy.Tree):
         t.deroot()
         return t.newick
 
-    def intersection(self, other):
-        """ Returns the intersection of the taxon sets of two Trees """
-        taxa1 = self.labels()
-        taxa2 = other.labels()
-        return taxa1 & taxa2
-
-    def prune_to_subset(self, subset, inplace=False):
-        """ Prunes the Tree to just the taxon set given in `subset` """
-        if not subset.issubset(self.labels):
-            print '"subset" is not a subset'
-            return
-        if not inplace:
-            t = self.copy()
-        else:
-            t = self
-        t.retain_taxa_with_labels(subset)
-        return t
-
-    def pruned_pair(self, other, inplace=False):
-        """ Returns two trees pruned to the intersection of their taxon sets """
-        assert isinstance(other, self.__class__)
-
-    def scale(self, factor, inplace=True):
-        """ Multiplies all branch lengths by factor. """
-        if not inplace:
-            t = self.copy()
-        else:
-            t = self
-        t.scale_edges(factor)
-        return t
-
-    def strip(self, inplace=False):
-        """ Sets all edge lengths to None """
-        if not inplace:
-            t = self.copy()
-        else:
-            t = self
-        for e in t.preorder_edge_iter():
-            e.length = None
-        return t        
-
-    def randomise_branch_lengths(
-        self,
-        i=(1, 1),
-        l=(1, 1),
-        distribution_func=random.gammavariate,
-        inplace=False,
-        ):
-        """ Replaces branch lengths with values drawn from the specified
-        distribution_func. Parameters of the distribution are given in the 
-        tuples i and l, for interior and leaf nodes respectively. """
-
-        if not inplace:
-            t = self.copy()
-        else:
-            t = self
-
-        for n in t.preorder_node_iter():
-            if n.is_internal():
-                n.edge.length = max(0, distribution_func(*i))
-            else:
-                n.edge.length = max(0, distribution_func(*l))
-        return t
-
-    def randomise_labels(
-        self,
-        inplace=False,
-        ):
-        """ Shuffles the leaf labels, but doesn't alter the tree structure """
-
-        if not inplace:
-            t = self.copy()
-        else:
-            t = self
-
-        names = t.labels
-        random.shuffle(list(names))
-        for l in t.leaf_iter():
-            l.taxon_label = names.pop()
-        return t
-
-    def get_inner_edges(self):
-        """ Returns a list of the internal edges of the tree. """
-        inner_edges = [e for e in self.preorder_edge_iter() if e.is_internal()
-                       and e.head_node and e.tail_node]
-        return inner_edges
-
-    def get_nonroot_edges(self):
-        return [e for e in self.preorder_edge_iter()
-             if e.head_node and e.tail_node]
+    def copy(self):
+        """ Returns an independent copy of self """
+        copy = self.__class__(self.newick, self.score, self.output,
+                              self.program, self.name)
+        return copy
 
     def get_children(tree, inner_edge):
         """ Given an edge in the tree, returns the child nodes of the head and
@@ -381,6 +303,22 @@ class Tree(dendropy.Tree):
         if original_seed:
             tree.reseed_at(original_seed)
         return {'head': head_children, 'tail': tail_children}
+
+    def get_inner_edges(self):
+        """ Returns a list of the internal edges of the tree. """
+        inner_edges = [e for e in self.preorder_edge_iter() if e.is_internal()
+                       and e.head_node and e.tail_node]
+        return inner_edges
+
+    def get_nonroot_edges(self):
+        return [e for e in self.preorder_edge_iter()
+             if e.head_node and e.tail_node]
+
+    def intersection(self, other):
+        """ Returns the intersection of the taxon sets of two Trees """
+        taxa1 = self.labels
+        taxa2 = other.labels
+        return taxa1 & taxa2
 
     def nni(
         self,
@@ -426,20 +364,8 @@ class Tree(dendropy.Tree):
             self.reroot_at_edge(*rooting_data)
         self.update_splits()
 
-    def rnni(self, inplace=False):
-        """ Applies a NNI operation on a randomly chosen edge. If called with
-        inplace=True this will alter the structure of the calling Tree. """
-        if inplace:
-            tree = self
-        else:
-            tree = self.copy()
-
-        e = random.choice(tree.get_inner_edges())
-        children = tree.get_children(e)
-        (h, t) = (random.choice(children['head']), random.choice(children['tail'
-                  ]))
-        tree.nni(e, h, t)
-        return tree
+    def ntaxa(self):
+        return len(self)
 
     def prune(self, edge, length=None):
         """ Prunes a subtree from the main Tree, retaining an edge length
@@ -457,6 +383,77 @@ class Tree(dendropy.Tree):
         n.edge_length = length
         return n
 
+    def prune_to_subset(self, subset, inplace=False):
+        """ Prunes the Tree to just the taxon set given in `subset` """
+        if not subset.issubset(self.labels):
+            print '"subset" is not a subset'
+            return
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+        t.retain_taxa_with_labels(subset)
+        t.update_splits()
+        return t
+
+    @classmethod
+    def pruned_pair(cls, t1, t2):
+        """ Returns two trees pruned to the intersection of their taxon sets """
+        assert isinstance(t1, cls)
+        assert isinstance(t2, cls)
+
+        intersection = t1 & t2        
+        t1 = t1.copy()
+        t2 = t2.copy()
+        t1.prune_to_subset(intersection, inplace=True)
+        t2.prune_to_subset(intersection, inplace=True)
+        t1.seed_node.edge_length=0.0
+        t2.seed_node.edge_length=0.0
+        # To avoid taxon set nightmares do this:
+        t1 = cls(t1.as_string('newick'))
+        t2 = cls(t2.as_string('newick'))
+        return t1, t2
+
+    def randomise_branch_lengths(
+        self,
+        i=(1, 1),
+        l=(1, 1),
+        distribution_func=random.gammavariate,
+        inplace=False,
+        ):
+        """ Replaces branch lengths with values drawn from the specified
+        distribution_func. Parameters of the distribution are given in the 
+        tuples i and l, for interior and leaf nodes respectively. """
+
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+
+        for n in t.preorder_node_iter():
+            if n.is_internal():
+                n.edge.length = max(0, distribution_func(*i))
+            else:
+                n.edge.length = max(0, distribution_func(*l))
+        return t
+
+    def randomise_labels(
+        self,
+        inplace=False,
+        ):
+        """ Shuffles the leaf labels, but doesn't alter the tree structure """
+
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+
+        names = t.labels
+        random.shuffle(list(names))
+        for l in t.leaf_iter():
+            l.taxon_label = names.pop()
+        return t
+
     def regraft(self, edge, node, length=None):
         """ Grafts a node onto an edge of the Tree, at a point specified by
         length (defaults to middle of edge). """
@@ -472,62 +469,6 @@ class Tree(dendropy.Tree):
         new.add_child(h, edge_length=length)
         new.add_child(node)
         self.update_splits()
-
-    def spr(self, pruning_edge, regrafting_edge, length1=None, length2=None):
-        """ Combines self.prune() and self.regraft() methods to perform
-        Subtree-Prune and Regraft (SPR) operation. 
-
-        Notes
-        N1: Sanity check that we don't try to regraft to pruned subtree onto
-        an edge that is in the pruned subtree
-        N2: Adjustment to account for the fact the the pruned edge's parent
-        edge is deleted in the prune operation.
-        """
-        try: # See note N1
-            descendents = [n.edge for n in 
-                pruning_edge.head_node.preorder_iter()]
-            assert regrafting_edge not in descendents
-        except AssertionError:
-            raise TreeEdgeError('Regraft edge is on the pruned subtree')
-
-        sister_nodes = pruning_edge.head_node.sister_nodes() # See note N2
-        if (regrafting_edge == pruning_edge.tail_node.edge
-            and len(sister_nodes) == 1):
-            regrafting_edge = sister_nodes[0].edge
-            length2 += sister_nodes[0].edge_length # end note N2
-        
-        n = self.prune(pruning_edge, length1)        
-        self.regraft(regrafting_edge, n, length2)
-
-    def rspr(self, inplace=False, disallow_sibling_sprs=False):
-        """ Random SPR, with prune and regraft edges chosen randomly, and
-        lengths drawn uniformly from the available edge lengths.
-
-        N1: disallow_sibling_sprs prevents sprs that don't alter the topology
-        of the tree """
-        if not inplace:
-            tree = self.copy()
-        else:
-            tree = self
-        
-        edges = [e for e in tree.preorder_edge_iter()
-                 if e.head_node and e.tail_node]
-        pruning_edge = random.choice(edges)
-        
-        if disallow_sibling_sprs: # See note N1
-            for e in pruning_edge.adjacent_edges:
-                edges.remove(e)
-
-        for n in pruning_edge.head_node.preorder_iter():
-            edges.remove(n.edge)
-
-        regrafting_edge = random.choice(edges)
-
-        length1 = random.uniform(0, pruning_edge.length)
-        length2 = random.uniform(0, regrafting_edge.length)
-
-        tree.spr(pruning_edge, regrafting_edge, length1, length2)
-        return tree
 
     def reversible_deroot(self):
         """ Stores info required to restore rootedness to derooted Tree. Returns
@@ -583,33 +524,131 @@ class Tree(dendropy.Tree):
         t.spr(pr_ed, rg_ed, l1, l2)
         return t
 
+    def rnni(self, inplace=False):
+        """ Applies a NNI operation on a randomly chosen edge. If called with
+        inplace=True this will alter the structure of the calling Tree. """
+        if inplace:
+            tree = self
+        else:
+            tree = self.copy()
+
+        e = random.choice(tree.get_inner_edges())
+        children = tree.get_children(e)
+        (h, t) = (random.choice(children['head']), random.choice(children['tail'
+                  ]))
+        tree.nni(e, h, t)
+        return tree
+
+    def rspr(self, inplace=False, disallow_sibling_sprs=False):
+        """ Random SPR, with prune and regraft edges chosen randomly, and
+        lengths drawn uniformly from the available edge lengths.
+
+        N1: disallow_sibling_sprs prevents sprs that don't alter the topology
+        of the tree """
+        if not inplace:
+            tree = self.copy()
+        else:
+            tree = self
+        
+        edges = [e for e in tree.preorder_edge_iter()
+                 if e.head_node and e.tail_node]
+        pruning_edge = random.choice(edges)
+        
+        if disallow_sibling_sprs: # See note N1
+            for e in pruning_edge.adjacent_edges:
+                edges.remove(e)
+
+        for n in pruning_edge.head_node.preorder_iter():
+            edges.remove(n.edge)
+
+        regrafting_edge = random.choice(edges)
+
+        length1 = random.uniform(0, pruning_edge.length)
+        length2 = random.uniform(0, regrafting_edge.length)
+
+        tree.spr(pruning_edge, regrafting_edge, length1, length2)
+        return tree
+
+    def scale(self, factor, inplace=True):
+        """ Multiplies all branch lengths by factor. """
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+        t.scale_edges(factor)
+        return t
+
+    def spr(self, pruning_edge, regrafting_edge, length1=None, length2=None):
+        """ Combines self.prune() and self.regraft() methods to perform
+        Subtree-Prune and Regraft (SPR) operation. 
+
+        Notes
+        N1: Sanity check that we don't try to regraft to pruned subtree onto
+        an edge that is in the pruned subtree
+        N2: Adjustment to account for the fact the the pruned edge's parent
+        edge is deleted in the prune operation.
+        """
+        try: # See note N1
+            descendents = [n.edge for n in 
+                pruning_edge.head_node.preorder_iter()]
+            assert regrafting_edge not in descendents
+        except AssertionError:
+            raise TreeError('Regraft edge is on the pruned subtree')
+
+        sister_nodes = pruning_edge.head_node.sister_nodes() # See note N2
+        if (regrafting_edge == pruning_edge.tail_node.edge
+            and len(sister_nodes) == 1):
+            regrafting_edge = sister_nodes[0].edge
+            length2 += sister_nodes[0].edge_length # end note N2
+        
+        n = self.prune(pruning_edge, length1)        
+        self.regraft(regrafting_edge, n, length2)
+
+    def strip(self, inplace=False):
+        """ Sets all edge lengths to None """
+        if not inplace:
+            t = self.copy()
+        else:
+            t = self
+        for e in t.preorder_edge_iter():
+            e.length = None
+        return t        
+
     def write_to_file(
         self,
         outfile,
         metadata=False,
-        suppress_NHX=False,
+        scale=1,
+        **kwargs
         ):
-        """ Writes a string representation of the object's contents to file.
-        This can be read using read_from_file to reconstruct the Tree object, if
-        metadata is included (i.e. metadata=True) """
+        """ Writes the tree to file. If metadata==True it writes the tree's
+        likelihood score, name and generating program to the file inside a 
+        comment.
+        Scale allows branch lengths to be scaled by a float, or suppressed if
+        the scale value is zero. Negative values also suppress edge lengths.
+        KWargs allowed are all the KWargs allowed by the dendropy tree.as_string
+        method, including:
+        suppress_edge_lengths, internal_labels, suppress_rooting, 
+            edge_label_compose_func...
+        suppress_rooting is set to True by default
+        """
+        if scale<=0:
+            kwargs.update({'suppress_edge_lengths': True})
+        else:
+            l = lambda x:str(x.length*scale)
+            kwargs.update({'edge_label_compose_func': l})
+        if not 'suppress_rooting' in kwargs:
+            kwargs.update({'suppress_rooting': True})
 
         with open(outfile, 'w') as writer:
             if metadata:
                 writer.write(str(self))
             else:
-                writeable = self.newick
-                if suppress_NHX:
-                    if writeable.startswith('[&R] '):
-                        writeable = writeable[5:]
-                if not writeable.endswith('\n'):
-                    writeable += '\n'
+                writeable = self.as_string('newick', **kwargs)
                 writer.write(writeable)
         return outfile
 
-    def ntaxa(self):
-        return len(self)
-
-    def _name_things(self):
+    def __name_things(self):
         """ Easy names for debugging """
         edges = {}
         nodes = {None: 'root'}
@@ -658,66 +697,111 @@ class Tree(dendropy.Tree):
             name=name)
 
     ### DISTANCE CALCULATIONS
-    # _unify_taxon_sets() might not be necessary - can't seem to reproduce
+    # __unify_taxon_sets() might not be necessary - can't seem to reproduce
     # the bug that made me introduce it
 
-    def _unify_taxon_sets(self, other):
+    def __unify_taxon_sets(self, other):
+        print 'In __unify_taxon_sets'
         if other.taxon_set is not self.taxon_set:
             return self.__class__(other.newick, taxon_set=self.taxon_set)
         else:
             return other
 
     def rfdist_(self, other):
-        cp = self._unify_taxon_sets(other)
+        cp = self.__unify_taxon_sets(other)
         return self.symmetric_difference(cp)
 
-    def rfdist(self, other):
+    def rfdist(self, other, normalise=False):
+        if self ^ other:
+            t1, t2 = self.__class__.pruned_pair(self, other)
+        else:
+            t1, t2 = self, other
+        if len(t1) < 4:
+            msg = ('The intersection of the trees is too small to calculate'
+            ' the RF distance')
+            raise TreeError(msg)
         try:
-            return self.symmetric_difference(other)
+            distance = t1.symmetric_difference(t2)
+            if normalise:
+                rfmax = float(2*(len(t1)-3))
+                distance /= rfmax
+            return distance
         except:
             print 'ERROR!'
             return self.rfdist_(other)
 
     def eucdist_(self, other):
-        cp = self._unify_taxon_sets(other)
+        cp = self.__unify_taxon_sets(other)
         return self.euclidean_distance(cp)
 
-    def eucdist(self, other):
+    def eucdist(self, other, normalise=False):
+        if self ^ other:
+            t1, t2 = self.__class__.pruned_pair(self, other)
+        else:
+            t1, t2 = self, other
+        if normalise:
+            t1, t2 = self.__class__.normalised_pair(t1, t2)
         try:
-            return self.euclidean_distance(other)
+            return t1.euclidean_distance(t2)
         except:
             print 'ERROR!'
             return self.eucdist_(other)
 
     def wrfdist_(self, other):
-        cp = self._unify_taxon_sets(other)
+        cp = self.__unify_taxon_sets(other)
         return self.robinson_foulds_distance(cp)
 
-    def wrfdist(self, other):
+    def wrfdist(self, other, normalise=False):
+        if self ^ other:
+            t1, t2 = self.__class__.pruned_pair(self, other)
+        else:
+            t1, t2 = self, other
+        if normalise:
+            t1, t2 = self.__class__.normalised_pair(t1, t2)
         try:
-            return self.robinson_foulds_distance(other)
+            return t1.robinson_foulds_distance(t2)
         except:
             print 'ERROR!'
             return self.wrfdist_(other)
 
     @classmethod
-    def new_rtree(cls, nspecies=16, **kwargs):
+    def new_rtree(cls, nspecies=16, zero_root_height=True, **kwargs):
         tg = TreeGen(nspecies, **kwargs)
-        return tg.rtree()
+        tree = tg.rtree()
+        if zero_root_height:
+            tree.seed_node.edge_length = 0.0
+        return tree
 
     @classmethod
-    def new_coal(cls, nspecies=16, **kwargs):
+    def new_coal(cls, nspecies=16, zero_root_height=True, **kwargs):
         tg = TreeGen(nspecies, **kwargs)
-        return tg.coal()
+        tree = tg.coal()
+        if zero_root_height:
+            tree.seed_node.edge_length = 0.0
+        return tree
 
     @classmethod
-    def new_yule(cls, nspecies=16, **kwargs):
+    def new_yule(cls, nspecies=16, zero_root_height=True, **kwargs):
         tg = TreeGen(nspecies, **kwargs)
-        return tg.yule()
+        tree = tg.yule()
+        if zero_root_height:
+            tree.seed_node.edge_length = 0.0
+        return tree
 
     def sample_gene_tree(self, **kwargs):
         tg = TreeGen(template=self)
         return tg.gene_tree(**kwargs)
+
+    @classmethod
+    def normalised_pair(cls, t1, t2, inplace=False):
+        if not inplace:
+            t1_copy = t1.copy()
+            t2_copy = t2.copy()
+        normalisation = 1/(t1.length()+t2.length())
+        t1_copy.scale(normalisation)
+        t2_copy.scale(normalisation)
+        return t1_copy, t2_copy
+
 
 class TreeGen(object):
 
