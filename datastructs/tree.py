@@ -4,6 +4,7 @@ import dendropy
 import re
 import random
 from ..errors import FileError, filecheck
+from ..utils import lognormal_parameters
 
 class TreeError(Exception):
     def __init__(self, msg):
@@ -273,9 +274,7 @@ class Tree(dendropy.Tree):
 
     def copy(self):
         """ Returns an independent copy of self """
-        copy = self.__class__(self.newick, self.score, self.output,
-                              self.program, self.name)
-        return copy
+        return self.__class__().clone_from(self)
 
     def get_children(tree, inner_edge):
         """ Given an edge in the tree, returns the child nodes of the head and
@@ -366,6 +365,32 @@ class Tree(dendropy.Tree):
 
     def ntaxa(self):
         return len(self)
+
+    def patristic(self, taxon_label1, taxon_label2):
+        if not hasattr(self, 'pdm'):
+            try:
+                self.pdm = dendropy.treecalc.PatristicDistanceMatrix(self)
+            except TypeError:
+                print ('Error calculating patristic distances - maybe this tree'
+                    ' has no branch lengths?')
+                return
+        
+        leaf1 = self.find_node_with_taxon_label(taxon_label1)
+        leaf2 = self.find_node_with_taxon_label(taxon_label2)
+        
+        if leaf1:
+            taxon1 = leaf1.taxon
+        else:
+            print 'Couldn\'t find {0} on the tree'.format(taxon_label1)
+            return
+
+        if leaf2:
+            taxon2 = leaf2.taxon
+        else:
+            print 'Couldn\'t find {0} on the tree'.format(taxon_label2)
+            return
+
+        return self.pdm(taxon1, taxon2)
 
     def prune(self, edge, length=None):
         """ Prunes a subtree from the main Tree, retaining an edge length
@@ -469,6 +494,9 @@ class Tree(dendropy.Tree):
         new.add_child(h, edge_length=length)
         new.add_child(node)
         self.update_splits()
+
+    def relaxed_clock(self, ):
+        pass
 
     def reversible_deroot(self):
         """ Stores info required to restore rootedness to derooted Tree. Returns
