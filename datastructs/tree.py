@@ -13,10 +13,9 @@ class TreeError(Exception):
     def __str__(self):
         return self.msg
 
-def rootcheck(edge, msg='This is the root edge'):
-    """ Raises error if edge is the root edge (has no tail node) """
-    if not edge.tail_node:
-        raise TreeError(msg)
+def cast(dendropy_tree):
+    """ Cast dendropy.Tree instance as Tree instance """
+    return Tree(dendropy_tree.as_newick_string() + ';')
 
 def edge_length_check(length, edge):
     """ Raises error if length is not in interval [0, edge.length] """
@@ -29,9 +28,34 @@ def edge_length_check(length, edge):
             'This edge isn\'t long enough to prune at length {0}\n'
             '(Edge length = {1})'.format(length, edge.length))
 
-def cast(dendropy_tree):
-    """ Cast dendropy.Tree instance as Tree instance """
-    return Tree(dendropy_tree.as_newick_string() + ';')
+def logN_correlated_rate(parent_rate, branch_length, autocorrel_param, size=1):
+    """
+    The log of the descendent rate, ln(Rd), is ~ N(mu, bl*ac), where
+    the variance = bl*ac = branch_length * autocorrel_param, and mu is set
+    so that E[Rd] = Rp:
+    E[X] where ln(X) ~ N(mu, sigma^2) = exp(mu+(1/2)*sigma_sq)
+    so Rp = exp(mu+(1/2)*bl*ac),
+    ln(Rp) = mu + (1/2)*bl*ac,
+    ln(Rp) - (1/2)*bl*ac = mu,
+    so ln(Rd) ~ N(ln(Rp) - (1/2)*bl*ac, bl*ac)
+    (NB: Var[Rd] = Rp^2 * (exp(bl*ac)-1),
+         Std[Rd] = Rp * sqrt(exp(bl*ac)-1)
+
+    See: H Kishino, J L Thorne, and W J Bruno (2001)
+    """
+    if autocorrel_param <= 0:
+        raise Exception('Autocorrelation parameter must be greater than 0')
+    
+    variance = branch_length * autocorrel_param
+    stdev = np.sqrt(variance)
+    lnRd = np.random.normal(np.log(parent_rate) - 0.5*variance, scale=stdev, size=size)
+    Rd = np.exp(lnRd)
+    return float(Rd) if size==1 else Rd
+
+def rootcheck(edge, msg='This is the root edge'):
+    """ Raises error if edge is the root edge (has no tail node) """
+    if not edge.tail_node:
+        raise TreeError(msg)
 
 class LGT(object):
 
@@ -43,6 +67,37 @@ class LGT(object):
     def __init__(self, tree, verbosity=0):
         self.tree = tree
         self.verbosity = verbosity
+
+    def choose_prune_and_regraft_nodes(self, time, dists):
+        matching_branches = [x for x in dists if x[1] < time < x[2]]
+        if self.verbosity > 0:
+            print matching_branches
+
+        prune = random.sample(matching_branches, 1)[0]
+        if self.verbosity > 0:
+            print prune
+        siblings = prune[0].sister_nodes()
+        for br in matching_branches:
+            if br[0] in siblings:
+                matching_branches.remove(br)
+
+        matching_branches.remove(prune)
+        if self.verbosity > 0:
+            print matching_branches
+
+        if matching_branches == []:
+            if self.verbosity > 0:
+                print 'No non-sibling branches available'
+            return (None, None)
+
+        regraft = random.sample(matching_branches, 1)[0]
+
+        prune_taxa = [n.taxon.label for n in prune[0].leaf_iter()]
+        regraft_taxa = [n.taxon.label for n in regraft[0].leaf_iter()]
+        if self.verbosity:
+            print 'Donor group = {0}'.format(regraft_taxa)
+            print 'Receiver group = {0}'.format(prune_taxa)
+        return (prune, regraft)  
 
     def get_blocks(self):
         dists = []
@@ -76,19 +131,6 @@ class LGT(object):
             print blocks, dists
         return (blocks, dists)
 
-    def weight_by_branches(self, blocks):
-        intervals = sorted(blocks.keys())
-        weighted_intervals = [0] + [None] * (len(intervals) - 1)
-        for i in range(1, len(intervals)):
-            time_range = intervals[i] - intervals[i - 1]
-            num_branches = len(blocks[intervals[i]])
-            weighted_range = time_range * num_branches
-            weighted_intervals[i] = weighted_range + weighted_intervals[i
-                    - 1]
-        if self.verbosity > 0:
-            print weighted_intervals
-        return weighted_intervals
-
     def get_time(self, blocks, weights=None):
         d = sorted(blocks.keys())
         if weights:
@@ -108,37 +150,6 @@ class LGT(object):
 
         return time
 
-    def choose_prune_and_regraft_nodes(self, time, dists):
-        matching_branches = [x for x in dists if x[1] < time < x[2]]
-        if self.verbosity > 0:
-            print matching_branches
-
-        prune = random.sample(matching_branches, 1)[0]
-        if self.verbosity > 0:
-            print prune
-        siblings = prune[0].sister_nodes()
-        for br in matching_branches:
-            if br[0] in siblings:
-                matching_branches.remove(br)
-
-        matching_branches.remove(prune)
-        if self.verbosity > 0:
-            print matching_branches
-
-        if matching_branches == []:
-            if self.verbosity > 0:
-                print 'No non-sibling branches available'
-            return (None, None)
-
-        regraft = random.sample(matching_branches, 1)[0]
-
-        prune_taxa = [n.taxon.label for n in prune[0].leaf_iter()]
-        regraft_taxa = [n.taxon.label for n in regraft[0].leaf_iter()]
-        if self.verbosity:
-            print 'Donor group = {0}'.format(regraft_taxa)
-            print 'Receiver group = {0}'.format(prune_taxa)
-        return (prune, regraft)  
-
     def lgt(self, time=None):
         """ Known bugs: will hang at P1 if time in range [0 - depth of 1st node]
         """
@@ -155,6 +166,19 @@ class LGT(object):
         length1 = p[2] - time 
         length2 = r[2] - time
         return pruning_edge, regrafting_edge, length1, length2
+
+    def weight_by_branches(self, blocks):
+        intervals = sorted(blocks.keys())
+        weighted_intervals = [0] + [None] * (len(intervals) - 1)
+        for i in range(1, len(intervals)):
+            time_range = intervals[i] - intervals[i - 1]
+            num_branches = len(blocks[intervals[i]])
+            weighted_range = time_range * num_branches
+            weighted_intervals[i] = weighted_range + weighted_intervals[i
+                    - 1]
+        if self.verbosity > 0:
+            print weighted_intervals
+        return weighted_intervals
 
 class Tree(dendropy.Tree):
 
@@ -263,6 +287,24 @@ class Tree(dendropy.Tree):
         t = cls(newick)
         t.resolve_polytomies()
         return t.newick
+
+    @classmethod
+    def pruned_pair(cls, t1, t2):
+        """ Returns two trees pruned to the intersection of their taxon sets """
+        assert isinstance(t1, cls)
+        assert isinstance(t2, cls)
+
+        intersection = t1 & t2        
+        t1 = t1.copy()
+        t2 = t2.copy()
+        t1.prune_to_subset(intersection, inplace=True)
+        t2.prune_to_subset(intersection, inplace=True)
+        t1.seed_node.edge_length=0.0
+        t2.seed_node.edge_length=0.0
+        # To avoid taxon set nightmares do this:
+        t1 = cls(t1.as_string('newick'))
+        t2 = cls(t2.as_string('newick'))
+        return t1, t2
 
     @classmethod
     def trifurcate_base(cls, newick):
@@ -420,24 +462,6 @@ class Tree(dendropy.Tree):
         t.retain_taxa_with_labels(subset)
         t.update_splits()
         return t
-
-    @classmethod
-    def pruned_pair(cls, t1, t2):
-        """ Returns two trees pruned to the intersection of their taxon sets """
-        assert isinstance(t1, cls)
-        assert isinstance(t2, cls)
-
-        intersection = t1 & t2        
-        t1 = t1.copy()
-        t2 = t2.copy()
-        t1.prune_to_subset(intersection, inplace=True)
-        t2.prune_to_subset(intersection, inplace=True)
-        t1.seed_node.edge_length=0.0
-        t2.seed_node.edge_length=0.0
-        # To avoid taxon set nightmares do this:
-        t1 = cls(t1.as_string('newick'))
-        t2 = cls(t2.as_string('newick'))
-        return t1, t2
 
     def randomise_branch_lengths(
         self,
