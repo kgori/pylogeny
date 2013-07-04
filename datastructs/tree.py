@@ -3,7 +3,8 @@
 import dendropy
 import re
 import random
-from ..errors import FileError, filecheck
+import numpy as np
+from ..errors import FileError, filecheck, optioncheck
 from ..utils import lognormal_parameters
 
 class TreeError(Exception):
@@ -48,7 +49,8 @@ def logN_correlated_rate(parent_rate, branch_length, autocorrel_param, size=1):
     
     variance = branch_length * autocorrel_param
     stdev = np.sqrt(variance)
-    lnRd = np.random.normal(np.log(parent_rate) - 0.5*variance, scale=stdev, size=size)
+    lnRd = np.random.normal(np.log(parent_rate) - 0.5*variance, scale=stdev, 
+        size=size)
     Rd = np.exp(lnRd)
     return float(Rd) if size==1 else Rd
 
@@ -103,6 +105,8 @@ class LGT(object):
         dists = []
         blocks = {}
         rootlen = self.tree.seed_node.edge_length
+        if rootlen is None:
+            rootlen = 0.0
         
         for n in self.tree.preorder_node_iter():
             node_height = n.distance_from_root() - rootlen
@@ -150,7 +154,7 @@ class LGT(object):
 
         return time
 
-    def lgt(self, time=None):
+    def lgt(self, time=None, p=None, r=None):
         """ Known bugs: will hang at P1 if time in range [0 - depth of 1st node]
         """
 
@@ -158,7 +162,8 @@ class LGT(object):
         if not time:
             weights = self.weight_by_branches(blocks)
             time = self.get_time(blocks, weights)
-        (p, r) = (None, None)
+        if p is None or r is None:
+            (p, r) = (None, None)
         while (p, r) == (None, None): #P1
             (p, r) = self.choose_prune_and_regraft_nodes(time, dists)
         pruning_edge = p[0].edge
@@ -519,8 +524,44 @@ class Tree(dendropy.Tree):
         new.add_child(node)
         self.update_splits()
 
-    def relaxed_clock(self, ):
-        pass
+    def autocorrelated_relaxed_clock(self, root_rate, autocorrel, 
+        distribution='lognormal'):
+        """
+        Attaches rates to each node according to autocorrelated lognormal
+        model from Kishino et al.(2001), or autocorrelated exponential
+        """
+        optioncheck(distribution, ['exponential', 'lognormal'])
+
+        if autocorrel == 0:
+            for node in self.preorder_node_iter():
+                node.rate = root_rate
+            return
+
+        for node in self.preorder_node_iter():
+            if node == self.seed_node:
+                node.rate = root_rate
+            else:
+                parent_rate = node.parent_node.rate
+                bl = node.edge_length
+                if distribution == 'lognormal':
+                    node.rate = logN_correlated_rate(parent_rate, bl,
+                        autocorrel)
+                else:
+                    node.rate = np.random.exponential(parent_rate)
+
+    def uncorrelated_relaxed_clock(self, root_rate, variance, 
+        distribution='lognormal'):
+        optioncheck(distribution, ['exponential', 'lognormal'])
+
+        for node in self.preorder_node_iter():
+            if node == self.seed_node:
+                node.rate = root_rate
+            else:
+                if distribution == 'lognormal':
+                    mu = np.log(root_rate) - 0.5*variance
+                    node.rate = np.random.lognormal(mu, variance)
+                else:
+                    node.rate = np.random.exponential(root_rate)
 
     def reversible_deroot(self):
         """ Stores info required to restore rootedness to derooted Tree. Returns
