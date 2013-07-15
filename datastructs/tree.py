@@ -7,13 +7,6 @@ import numpy as np
 from ..errors import FileError, filecheck, optioncheck
 from ..utils import lognormal_parameters
 
-class TreeError(Exception):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return self.msg
-
 def cast(dendropy_tree):
     """ Cast dendropy.Tree instance as Tree instance """
     return Tree(dendropy_tree.as_newick_string() + ';')
@@ -28,6 +21,11 @@ def edge_length_check(length, edge):
         raise TreeError(
             'This edge isn\'t long enough to prune at length {0}\n'
             '(Edge length = {1})'.format(length, edge.length))
+
+def rootcheck(edge, msg='This is the root edge'):
+    """ Raises error if edge is the root edge (has no tail node) """
+    if not edge.tail_node:
+        raise TreeError(msg)
 
 def logN_correlated_rate(parent_rate, branch_length, autocorrel_param, size=1):
     """
@@ -54,184 +52,264 @@ def logN_correlated_rate(parent_rate, branch_length, autocorrel_param, size=1):
     Rd = np.exp(lnRd)
     return float(Rd) if size==1 else Rd
 
-def rootcheck(edge, msg='This is the root edge'):
-    """ Raises error if edge is the root edge (has no tail node) """
-    if not edge.tail_node:
-        raise TreeError(msg)
+class TreeError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
 
-class ReversibleDeroot(object):
-    def __init__(self, f):
-        self.f = f
+    def __str__(self):
+        return self.msg
 
-    def __call__(self, *args):
-        edge, len1, len2 = self.reversible_deroot(args[0])
-        self.f(*args)
-        self.reroot(args[0], edge, len1, len2)
-        return args[0]
+class SPR(object):
+    """ Subtree prune and regraft functionality """
 
-    def reversible_deroot(self):
-        """ Stores info required to restore rootedness to derooted Tree. Returns
-        the edge that was originally rooted, the length of e1, and the length 
-        of e2.
+    def __init__(self, tree):
+        self.tree = tree
 
-        Dendropy Derooting Process:
-        In a rooted tree the root node is bifurcating. Derooting makes it 
-        trifurcating. 
-
-        Call the two edges leading out of the root node e1 and e2.
-        Derooting with Tree.deroot() deletes one of e1 and e2 (let's say e2), 
-        and stretches the other to the sum of their lengths. Call this e3.
-
-        Rooted tree:                   Derooted tree:
-                 A                         A   B
-                 |_ B                       \ /   
-                /                            |
-               /e1                           |e3 (length = e1+e2; e2 is deleted)
-        Root--o               ===>           |
-               \e2                     Root--o _ C   
-                \ _ C                        |
-                 |                           D
-                 D
-
-        Reverse this with Tree.reroot_at_edge(edge, length1, length2, ...)
+    def _check_single_outgroup(self):
         """
-        root_edge = self.seed_node.edge
-        lengths = dict([(edge, edge.length) for edge 
-            in self.seed_node.incident_edges() if edge is not root_edge])
-        self.deroot()
-        reroot_edge = (set(self.seed_node.incident_edges()) 
-                            & set(lengths.keys())).pop()
-        return (reroot_edge, reroot_edge.length - lengths[reroot_edge], 
-            lengths[reroot_edge])
+        If only one (or none) of the seed node children is not a leaf node
+        it is not possible to prune that edge and make a topology-changing
+        regraft.
+        """
+        root_child_nodes = self.tree.seed_node.child_nodes()
+        not_leaves = np.logical_not([n.is_leaf() for n in root_child_nodes])
+        if not_leaves[not_leaves].size <= 1:
+            return [root_child_nodes[np.where(not_leaves)[0]].edge]
+        return []
 
-    def reroot(self, tree, edge, len1, len2):
-        tree.reroot_at_edge(edge, len1, len2)
+    def prune(self, edge, length=None):
+        """ Prunes a subtree from the main Tree, retaining an edge length
+        specified by length (defaults to entire length). The length is sanity-
+        checked by edge_length_check, to ensure it is within the bounds 
+        [0, edge.length].
+
+        Returns the basal node of the pruned subtree. """
+
+        length = length or edge.length
+        edge_length_check(length, edge)
+
+        n = edge.head_node
+        self.tree.prune_subtree(n, delete_outdegree_one=False)
+        n.edge_length = length
+        return n
+
+    def regraft(self, edge, node, length=None):
+        """ Grafts a node onto an edge of the Tree, at a point specified by
+        length (defaults to middle of edge). """
+
+        rootcheck(edge, 'SPR regraft is not allowed on the root edge')
+        length = length or edge.length/2. # Length measured from head to tail
+        edge_length_check(length, edge)
+
+        t = edge.tail_node
+        h = edge.head_node
+        new = t.new_child(edge_length=edge.length-length)
+        t.remove_child(h)
+        new.add_child(h, edge_length=length)
+        new.add_child(node)
+        self.tree.update_splits(delete_outdegree_one=True)
+
+    def spr(self, prune_edge, length1, regraft_edge, length2):
+        assert (regraft_edge.head_node 
+            not in prune_edge.head_node.preorder_iter())
+        node = self.prune(prune_edge, length1)
+        self.regraft(regraft_edge, node, length2)
+
+    def rspr(self, disallow_sibling_sprs=False, 
+        keep_entire_edge=False, rescale=False):
+        """ Random SPR, with prune and regraft edges chosen randomly, and
+        lengths drawn uniformly from the available edge lengths.
+
+        N1: disallow_sibling_sprs prevents sprs that don't alter the topology
+        of the tree """
+
+        starting_length = self.tree.length()
+
+        excl = [self.tree.seed_node.edge] #exclude r
+        if disallow_sibling_sprs:
+            excl.extend(self._check_single_outgroup())
+        prune_edge, l1 = self.tree.map_event_onto_tree(excl)
+        if keep_entire_edge:
+            l1 = prune_edge.length
+
+        prune_edge_child_nodes = prune_edge.head_node.preorder_iter()
+        excl.extend([node.edge for node in prune_edge_child_nodes])
+
+        if disallow_sibling_sprs:
+            sibs = [node.edge for node in prune_edge.head_node.sister_nodes()]
+            par = prune_edge.tail_node.edge
+            sibs.append(par)
+            for edge in sibs:
+                if edge not in excl:
+                    excl.append(edge)
+            if set(self.tree.preorder_edge_iter()) - set(excl) == set([]):
+                print repr(self.tree)
+                print self.tree.as_ascii_plot()
+                print edges[prune_edge]
+                raise Exception('No non-sibling sprs available')
+
+        regraft_edge, l2 = self.tree.map_event_onto_tree(excl)
+
+        self.spr(prune_edge, l1, regraft_edge, l2)
+        if rescale:
+            tree.scale(starting_length/tree.length())
 
 class LGT(object):
 
-    """ This class provides a random LGT implementation using SPRs from an older
-    version of this software. I've kept it for now because it works, and to 
-    reimplement from scratch would be inconvenient, but is most definitely on 
-    the 'to do' list """ 
+    def __init__(self, tree):
+        self.SPR = SPR(tree)
+        self.tree = self.SPR.tree
+        try:
+            self.tree.calc_node_ages()
+        except:
+            raise Exception('Tree is not ultrametric')
 
-    def __init__(self, tree, verbosity=0):
-        self.tree = tree
-        self.verbosity = verbosity
-
-    def choose_prune_and_regraft_nodes(self, time, dists):
-        matching_branches = [x for x in dists if x[1] < time < x[2]]
-        if self.verbosity > 0:
-            print matching_branches
-
-        prune = random.sample(matching_branches, 1)[0]
-        if self.verbosity > 0:
-            print prune
-        siblings = prune[0].sister_nodes()
-        for br in matching_branches:
-            if br[0] in siblings:
-                matching_branches.remove(br)
-
-        matching_branches.remove(prune)
-        if self.verbosity > 0:
-            print matching_branches
-
-        if matching_branches == []:
-            if self.verbosity > 0:
-                print 'No non-sibling branches available'
-            return (None, None)
-
-        regraft = random.sample(matching_branches, 1)[0]
-
-        prune_taxa = [n.taxon.label for n in prune[0].leaf_iter()]
-        regraft_taxa = [n.taxon.label for n in regraft[0].leaf_iter()]
-        if self.verbosity:
-            print 'Donor group = {0}'.format(regraft_taxa)
-            print 'Receiver group = {0}'.format(prune_taxa)
-        return (prune, regraft)  
-
-    def get_blocks(self):
-        dists = []
-        blocks = {}
-        rootlen = self.tree.seed_node.edge_length
-        if rootlen is None:
-            rootlen = 0.0
-        
-        for n in self.tree.preorder_node_iter():
-            node_height = n.distance_from_root() - rootlen
-            if not n.parent_node:
-                continue
-                root_height = n.distance_from_root()
-                self.tree_height = root_height + n.distance_from_tip()
-                parent_height = 0
-            else:
-                parent_height = n.parent_node.distance_from_root() - rootlen
-            node_height = round(node_height, 8)
-            parent_height = round(parent_height, 8)
-
-            if not node_height in blocks:
-                blocks[node_height] = []
-
-            dists.append((n, parent_height, node_height))
-
-        for time in blocks:
-            for (node, parent_h, node_h) in dists:
-                if parent_h < time <= node_h:
-                    blocks[time].append(node)
-
-        dists.sort(key=lambda x: x[2])
-        if self.verbosity > 0:
-            print blocks, dists
-        return (blocks, dists)
-
-    def get_time(self, blocks, weights=None):
-        d = sorted(blocks.keys())
-        if weights:
-            samp = random.uniform(weights[0], weights[-1])
-            for i in range(len(weights) - 1):
-                if weights[i + 1] >= samp > weights[i]:
-                    interval = weights[i + 1] - weights[i]
-                    proportion = (samp - weights[i]) / interval
-                    break
-            drange = d[i + 1] - d[i]
-            time = drange * proportion + d[i]
-        else:
-            time = random.uniform(d[0], d[-1])
-
-        if self.verbosity > 0: 
-            print 'LGT event at time: {0}'.format(time)
-
+    def get_time(self, *args):
+        e, l = self.tree.map_event_onto_tree(*args)
+        time = l + e.head_node.age
         return time
 
-    def lgt(self, time=None, p=None, r=None):
-        """ Known bugs: will hang at P1 if time in range [0 - depth of 1st node]
+    def matching_edges(self, time):
+        def edge_matches_time(edge):
+            if edge.tail_node is None:
+                return False
+            return edge.head_node.age < time < edge.tail_node.age
+
+        matching_edges = self.tree.preorder_edge_iter(edge_matches_time)
+        return list(matching_edges)
+
+    def rlgt(self, time=None, disallow_sibling_lgts=False):
+        
+        excl = [self.tree.seed_node.edge]
+        if disallow_sibling_lgts:
+            self.add_single_node()
+            children = self.tree.seed_node.child_nodes()
+            excl.extend([n.edge for n in children])
+
+        if time is None:
+            time = self.get_time(excl)
+        print 'time = {0}'.format(time)
+
+        matching_edges = self.matching_edges(time)
+        donor = random.sample(matching_edges, 1)[0]
+        matching_edges.remove(donor)
+        if disallow_sibling_lgts:
+            sibs = donor.head_node.sister_nodes()
+            for sib in sibs:
+                if sib.edge in matching_edges:
+                    matching_edges.remove(sib.edge)
+        receiver = random.sample(matching_edges, 1)[0]
+       
+        l1 = time - receiver.head_node.age
+        l2 = time - donor.head_node.age
+        
+        self.SPR.spr(receiver, l1, donor, l2)
+
+    def add_single_node(self):
+        cn = self.tree.seed_node.child_nodes()
+        el = lambda n: n.edge_length
+        sh = min(cn, key=el)
+        lo = max(cn, key=el)
+        new = self.tree.seed_node.new_child(edge_length=sh.edge_length)
+        self.tree.prune_subtree(lo, delete_outdegree_one=False)
+        lo.edge_length -= sh.edge_length
+        new.add_child(lo)
+        self.tree.update_splits(delete_outdegree_one=False)
+        self.tree.calc_node_ages()
+
+class NNI(object):
+
+    def __init__(self, tree):
+        self.tree = tree
+        if tree.rooted:
+            self.reroot = True
+            self.rooting_info = self.tree.reversible_deroot()
+        else:
+            self.reroot = False
+            self.rooting_info = None
+
+    def get_children(self, inner_edge):
+        """ Given an edge in the tree, returns the child nodes of the head and
+        the tail nodes of the edge, for instance:
+
+            A      C    | A, B, C and D are the children of the edge --->,
+             \    /     | C and D are the head node children, and A and B
+             t--->h     | are the tail node children.   
+             /    \     
+            B      D    | Output: {'head': [<C>, <D>], 'tail': [<A>, <B>]}
+
+        N1: Edges are directional in dendropy trees. The head node of an
+        edge is automatically a child of the tail node, but we don't want this.
         """
 
-        (blocks, dists) = self.get_blocks()
-        if not time:
-            weights = self.weight_by_branches(blocks)
-            time = self.get_time(blocks, weights)
-        if p is None or r is None:
-            (p, r) = (None, None)
-        while (p, r) == (None, None): #P1
-            (p, r) = self.choose_prune_and_regraft_nodes(time, dists)
-        pruning_edge = p[0].edge
-        regrafting_edge = r[0].edge
-        length1 = p[2] - time 
-        length2 = r[2] - time
-        return pruning_edge, regrafting_edge, length1, length2
+        h = inner_edge.head_node
+        t = inner_edge.tail_node
+        if not self.tree.seed_node == t:
+            original_seed = self.tree.seed_node
+            self.tree.reseed_at(t)
+        else:
+            original_seed = None
+        head_children = h.child_nodes()
+        tail_children = list(set(t.child_nodes()) - set([h]))  # See N1
+        if original_seed:
+            self.tree.reseed_at(original_seed)
 
-    def weight_by_branches(self, blocks):
-        intervals = sorted(blocks.keys())
-        weighted_intervals = [0] + [None] * (len(intervals) - 1)
-        for i in range(1, len(intervals)):
-            time_range = intervals[i] - intervals[i - 1]
-            num_branches = len(blocks[intervals[i]])
-            weighted_range = time_range * num_branches
-            weighted_intervals[i] = weighted_range + weighted_intervals[i
-                    - 1]
-        if self.verbosity > 0:
-            print weighted_intervals
-        return weighted_intervals
+        return {'head': head_children, 'tail': tail_children}
+
+    def nni(
+        self,
+        edge,
+        head_subtree,
+        tail_subtree,
+        ):
+        """ *Inplace* Nearest-neighbour interchange (NNI) operation.
+        
+        An edge in the tree has two or more subtrees at each end (ends are
+        designated 'head' and 'tail'). The NNI operation exchanges one of the
+        head subtrees for one of the tail subtrees, as follows:
+
+            A      C                        C      A    | Subtree A is exchanged
+             \    /        +NNI(A,C)         \    /     | with subtree C.
+              --->        ==========>         --->      |
+             /    \                          /    \     |
+            B      D                        B      D
+        
+        
+        """
+        
+        # This implementation works on unrooted Trees. If the input Tree is
+        # rooted, the ReversibleDeroot decorator will temporarily unroot the
+        # tree while the NNI is carried out
+        
+        original_seed = self.tree.seed_node              
+        head = edge.head_node                       
+        tail = edge.tail_node
+        self.tree.reseed_at(tail)
+        try:
+            assert head_subtree.parent_node == head
+            assert tail_subtree.parent_node == tail
+        except:
+            print head, tail, head_subtree, tail_subtree
+            raise
+        head.remove_child(head_subtree)
+        tail.remove_child(tail_subtree)
+        head.add_child(tail_subtree)
+        tail.add_child(head_subtree)
+        self.tree.reseed_at(original_seed)
+        self.tree.update_splits()
+
+    def reroot_tree(self):
+        if self.reroot:
+            self.tree.reroot_at_edge(*self.rooting_info)
+            self.tree.update_splits()
+        return self.tree
+
+    def rnni(self):
+        e = random.choice(self.tree.get_inner_edges())
+        children = self.get_children(e)
+        (h, t) = (random.choice(children['head']), random.choice(children['tail'
+                  ]))
+        self.nni(e, h, t)
 
 class Tree(dendropy.Tree):
 
@@ -371,42 +449,6 @@ class Tree(dendropy.Tree):
         """ Returns an independent copy of self """
         return self.__class__().clone_from(self)
 
-    def get_children(self, inner_edge):
-        """ Given an edge in the tree, returns the child nodes of the head and
-        the tail nodes of the edge, for instance:
-
-            A      C    | A, B, C and D are the children of the edge --->,
-             \    /     | C and D are the head node children, and A and B
-             t--->h      | are the tail node children.   
-             /    \     
-            B      D    | Output: {'head': [<C>, <D>], 'tail': [<A>, <B>]}
-
-        N1: Edges are directional in dendropy trees. The head node of an
-        edge is automatically a child of the tail node, but we don't want this.
-        """
-
-        reroot = False     
-        if self.rooted:                 
-            reroot = True
-            rooting_data = self.reversible_deroot() 
-
-        h = inner_edge.head_node
-        t = inner_edge.tail_node
-        if not self.seed_node == t:
-            original_seed = self.seed_node
-            self.reseed_at(t)
-        else:
-            original_seed = None
-        head_children = h.child_nodes()
-        tail_children = list(set(t.child_nodes()) - set([h]))  # See N1
-        if original_seed:
-            self.reseed_at(original_seed)
-
-        if reroot:
-            self.reroot_at_edge(*rooting_data)
-
-        return {'head': head_children, 'tail': tail_children}
-
     def get_inner_edges(self):
         """ Returns a list of the internal edges of the tree. """
         inner_edges = [e for e in self.preorder_edge_iter() if e.is_internal()
@@ -423,63 +465,25 @@ class Tree(dendropy.Tree):
         taxa2 = other.labels
         return taxa1 & taxa2
 
-    def map_event_onto_tree(self):
-        edge_list = [edge for edge in self.preorder_edge_iter()]
+    def map_event_onto_tree(self, excluded_edges=None):        
+        edge_list = list(self.preorder_edge_iter())
+        if excluded_edges is not None:
+            if not isinstance(excluded_edges, list):
+                excluded_edges = [excluded_edges]
+            for excl in excluded_edges:
+                try:
+                    edge_list.remove(excl)
+                except:
+                    print 'Excluded_edges list includes some things'
+                    print 'that aren\'t in the tree'
+                    print 'like this one:', excl
         lengths = np.array([edge.length for edge in edge_list])
         cumulative_lengths = lengths.cumsum()
         rnum = np.random.random() * cumulative_lengths[-1]
-        index = np.searchsorted(rnum, cumulative_lengths)
+        index = cumulative_lengths.searchsorted(rnum)
         chosen_edge = edge_list[index]
-        from_tail_length = rnum - cumulative_lengths[index-1]
-        return edge, from_tail_length
-
-    def nni(
-        self,
-        edge,
-        head_subtree,
-        tail_subtree,
-        ):
-        """ *Inplace* Nearest-neighbour interchange (NNI) operation.
-        
-        An edge in the tree has two or more subtrees at each end (ends are
-        designated 'head' and 'tail'). The NNI operation exchanges one of the
-        head subtrees for one of the tail subtrees, as follows:
-
-            A      C                        C      A    | Subtree A is exchanged
-             \    /        +NNI(A,C)         \    /     | with subtree C.
-              --->        ==========>         --->      |
-             /    \                          /    \     |
-            B      D                        B      D
-        
-        
-        """
-        
-        # This implementation works on unrooted Trees. If the input Tree is
-        # rooted, it is derooted in a way that allows the root to be
-        # re-established, using the reversible_deroot() method
-        reroot = False                 
-        if self.rooted:                 
-            reroot = True
-            rooting_data = self.reversible_deroot() 
-
-        original_seed = self.seed_node              
-        head = edge.head_node                       
-        tail = edge.tail_node
-        self.reseed_at(tail)
-        try:
-            assert head_subtree.parent_node == head
-            assert tail_subtree.parent_node == tail
-        except:
-            print head, tail, head_subtree, tail_subtree
-            raise
-        head.remove_child(head_subtree)
-        tail.remove_child(tail_subtree)
-        head.add_child(tail_subtree)
-        tail.add_child(head_subtree)
-        self.reseed_at(original_seed)
-        if reroot:
-            self.reroot_at_edge(*rooting_data)
-        self.update_splits()
+        from_head_length = cumulative_lengths[index] - rnum
+        return chosen_edge, from_head_length
 
     def ntaxa(self):
         return len(self)
@@ -595,6 +599,42 @@ class Tree(dendropy.Tree):
         new.add_child(node)
         self.update_splits()
 
+    def reversible_deroot(self):
+        """ Stores info required to restore rootedness to derooted Tree. Returns
+        the edge that was originally rooted, the length of e1, and the length 
+        of e2.
+
+        Dendropy Derooting Process:
+        In a rooted tree the root node is bifurcating. Derooting makes it 
+        trifurcating. 
+
+        Call the two edges leading out of the root node e1 and e2.
+        Derooting with Tree.deroot() deletes one of e1 and e2 (let's say e2), 
+        and stretches the other to the sum of their lengths. Call this e3.
+
+        Rooted tree:                   Derooted tree:
+                 A                         A   B
+                 |_ B                       \ /   
+                /                            |
+               /e1                           |e3 (length = e1+e2; e2 is deleted)
+        Root--o               ===>           |
+               \e2                     Root--o _ C   
+                \ _ C                        |
+                 |                           D
+                 D
+
+        Reverse this with Tree.reroot_at_edge(edge, length1, length2, ...)
+        """
+        root_edge = self.seed_node.edge
+        lengths = dict([(edge, edge.length) for edge 
+            in self.seed_node.incident_edges() if edge is not root_edge])
+        self.deroot()
+        reroot_edge = (set(self.seed_node.incident_edges()) 
+                            & set(lengths.keys())).pop()
+        self.update_splits()
+        return (reroot_edge, reroot_edge.length - lengths[reroot_edge], 
+            lengths[reroot_edge])
+
     def autocorrelated_relaxed_clock(self, root_rate, autocorrel, 
         distribution='lognormal'):
         """
@@ -634,75 +674,37 @@ class Tree(dendropy.Tree):
                 else:
                     node.rate = np.random.exponential(root_rate)
 
-    def rlgt(self, inplace=False, time=None, verbosity=0):
+    def rlgt(self, inplace=False, time=None, times=1, disallow_sibling_sprs=False):
         """ Uses class LGT to perform random lateral gene transfer on 
         ultrametric tree """
 
-        if not inplace:
-            t = self.copy()
-        else:
-            t = self
+        lgt = LGT(self.copy())
+        for _ in range(times):
+            lgt.rlgt(time, disallow_sibling_sprs)
+        return lgt.tree
+        
 
-        try:
-            self.calc_node_ages() # Fails with ValueError if tree is not 
-        except ValueError:        # ultrametric
-            raise
-        t.update_splits()
-        lgt = LGT(t)
-        pr_ed, rg_ed, l1, l2 = lgt.lgt(time)
-        t.spr(pr_ed, rg_ed, l1, l2)
-        return t
+    def rnni(self, times=1):
+        """ Applies a NNI operation on a randomly chosen edge. """
+        
+        nni = NNI(self.copy())
+        for _ in range(times):
+            nni.rnni()
+        nni.reroot_tree()
+        return nni.tree
 
-    def rnni(self, inplace=False):
-        """ Applies a NNI operation on a randomly chosen edge. If called with
-        inplace=True this will alter the structure of the calling Tree. """
-        print 'IN RNNI'
-        if inplace:
-            tree = self
-        else:
-            tree = self.copy()        
-        reroot = False
-        if self.rooted:
-            reroot = True
-            edge, len1, len2 = self.reversible_deroot()
-        e = random.choice(tree.get_inner_edges())
-        children = tree.get_children(e)
-        (h, t) = (random.choice(children['head']), random.choice(children['tail'
-                  ]))
-        tree.nni(e, h, t)
-        if reroot:
-            self.reroot_at_edge(edge, len1, len2)
-        return tree
 
-    def rspr(self, inplace=False, disallow_sibling_sprs=False):
+    def rspr(self, times=1, **kwargs):
         """ Random SPR, with prune and regraft edges chosen randomly, and
         lengths drawn uniformly from the available edge lengths.
 
         N1: disallow_sibling_sprs prevents sprs that don't alter the topology
         of the tree """
-        if not inplace:
-            tree = self.copy()
-        else:
-            tree = self
-
-        edges = [e for e in tree.preorder_edge_iter()
-                 if e.head_node and e.tail_node]
-        pruning_edge = random.choice(edges)
         
-        if disallow_sibling_sprs: # See note N1
-            for e in pruning_edge.adjacent_edges:
-                edges.remove(e)
-
-        for n in pruning_edge.head_node.preorder_iter():
-            edges.remove(n.edge)
-
-        regrafting_edge = random.choice(edges)
-
-        length1 = random.uniform(0, pruning_edge.length)
-        length2 = random.uniform(0, regrafting_edge.length)
-
-        tree.spr(pruning_edge, regrafting_edge, length1, length2)
-        return tree
+        spr = SPR(self.copy())
+        for _ in range(times):
+            spr.rspr(**kwargs)
+        return spr.tree       
 
     def scale(self, factor, inplace=True):
         """ Multiplies all branch lengths by factor. """
@@ -712,33 +714,6 @@ class Tree(dendropy.Tree):
             t = self
         t.scale_edges(factor)
         return t
-
-    def spr(self, pruning_edge, regrafting_edge, length1=None, length2=None):
-        """ Combines self.prune() and self.regraft() methods to perform
-        Subtree-Prune and Regraft (SPR) operation. 
-
-        Notes
-        N1: Sanity check that we don't try to regraft to pruned subtree onto
-        an edge that is in the pruned subtree
-        N2: Adjustment to account for the fact the the pruned edge's parent
-        edge is deleted in the prune operation.
-        """
-        try: # See note N1
-            descendents = [n.edge for n in 
-                pruning_edge.head_node.preorder_iter()]
-            assert regrafting_edge not in descendents
-        except AssertionError:
-            raise TreeError('Regraft edge is on the pruned subtree')
-
-        sister_nodes = pruning_edge.head_node.sister_nodes() # See note N2
-        if (regrafting_edge == pruning_edge.tail_node.edge
-            and len(sister_nodes) == 1):
-            regrafting_edge = sister_nodes[0].edge
-            length2 += sister_nodes[0].edge_length # end note N2
-        
-        n = self.prune(pruning_edge, length1)        
-        self.regraft(regrafting_edge, n, length2)
-        self.update_splits()
 
     def strip(self, inplace=False):
         """ Sets all edge lengths to None """
