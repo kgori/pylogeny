@@ -179,16 +179,21 @@ class LGT(object):
         return list(matching_edges)
 
     def rlgt(self, time=None, disallow_sibling_lgts=False):
-        
+        self.tree.calc_node_ages()
         excl = [self.tree.seed_node.edge]
-        if disallow_sibling_lgts:
-            self.add_single_node()
-            children = self.tree.seed_node.child_nodes()
-            excl.extend([n.edge for n in children])
-
+        
         if time is None:
-            time = self.get_time(excl)
-        print 'time = {0}'.format(time)
+            if disallow_sibling_lgts:
+                self.add_single_node()
+                children = self.tree.seed_node.child_nodes()
+                excl.extend([n.edge for n in children])            
+                time = self.get_time(excl)
+                print 'time = {0}'.format(time)
+                self.tree.update_splits()
+
+            else:
+                time = self.get_time(excl)
+                print 'time = {0}'.format(time)
 
         matching_edges = self.matching_edges(time)
         donor = random.sample(matching_edges, 1)[0]
@@ -204,6 +209,7 @@ class LGT(object):
         l2 = time - donor.head_node.age
         
         self.SPR.spr(receiver, l1, donor, l2)
+        self.tree.calc_node_ages()
 
     def add_single_node(self):
         cn = self.tree.seed_node.child_nodes()
@@ -642,13 +648,14 @@ class Tree(dendropy.Tree):
                 else:
                     node.rate = np.random.exponential(root_rate)
 
-    def rlgt(self, inplace=False, time=None, times=1, disallow_sibling_sprs=False):
+    def rlgt(self, inplace=False, time=None, times=1, 
+        disallow_sibling_lgts=False):
         """ Uses class LGT to perform random lateral gene transfer on 
         ultrametric tree """
 
         lgt = LGT(self.copy())
         for _ in range(times):
-            lgt.rlgt(time, disallow_sibling_sprs)
+            lgt.rlgt(time, disallow_sibling_lgts)
         return lgt.tree
         
 
