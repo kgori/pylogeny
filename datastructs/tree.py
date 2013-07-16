@@ -514,22 +514,6 @@ class Tree(dendropy.Tree):
 
         return self.pdm(taxon1, taxon2)
 
-    def prune(self, edge, length=None):
-        """ Prunes a subtree from the main Tree, retaining an edge length
-        specified by length (defaults to entire length). The length is sanity-
-        checked by edge_length_check, to ensure it is within the bounds 
-        [0, edge.length].
-
-        Returns the basal node of the pruned subtree. """
-
-        length = length or edge.length
-        edge_length_check(length, edge)
-
-        n = edge.head_node
-        self.prune_subtree(n)
-        n.edge_length = length
-        return n
-
     def prune_to_subset(self, subset, inplace=False):
         """ Prunes the Tree to just the taxon set given in `subset` """
         if not subset.issubset(self.labels):
@@ -582,22 +566,6 @@ class Tree(dendropy.Tree):
         for l in t.leaf_iter():
             l.taxon_label = names.pop()
         return t
-
-    def regraft(self, edge, node, length=None):
-        """ Grafts a node onto an edge of the Tree, at a point specified by
-        length (defaults to middle of edge). """
-
-        length = length or edge.length/2. # Length measured from head to tail
-        edge_length_check(length, edge)
-        rootcheck(edge, 'SPR regraft is not allowed on the root edge')
-
-        t = edge.tail_node
-        h = edge.head_node
-        new = t.new_child(edge_length=edge.length-length)
-        t.remove_child(h)
-        new.add_child(h, edge_length=length)
-        new.add_child(node)
-        self.update_splits()
 
     def reversible_deroot(self):
         """ Stores info required to restore rootedness to derooted Tree. Returns
