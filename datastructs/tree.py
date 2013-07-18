@@ -876,7 +876,7 @@ class Tree(dendropy.Tree):
 
     def sample_gene_tree(self, **kwargs):
         tg = TreeGen(template=self)
-        return tg.gene_tree(**kwargs)
+        return tg.gene_tree(**kwargs)['gene_tree']
 
     @classmethod
     def normalised_pair(cls, t1, t2, inplace=False):
@@ -942,7 +942,7 @@ class TreeGen(object):
         to true, trims off the number which dendropy appends to the sequence
         name """
 
-        t = self.template or self.yule()
+        tree = self.template or self.yule()
 
         for leaf in tree.leaf_iter():
             leaf.num_genes = 1
@@ -963,7 +963,8 @@ class TreeGen(object):
                 leaf.taxon.label = leaf.taxon.label.replace('\'', '').split('_'
                         )[0]
 
-        return {'gene_tree': cast(gene_tree), 'species_tree': t}
+        return {'gene_tree': tree.__class__.cast(gene_tree), 
+            'species_tree': tree}
 
     def rtree(self):
         m = self.yule()
