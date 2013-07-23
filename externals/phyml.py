@@ -81,6 +81,8 @@ class Phyml(TreeSoftware):
                 defaults['-o'] = 'tlr'
             elif analysis == 'nj' or analysis == 'bionj':
                 defaults['-o'] = 'n'
+            elif analysis == 'lr' or analysis == 'bionj+':
+                defaults['-o'] = 'lr'
 
             for flag in defaults:
                 self.add_flag(flag, defaults[flag])
