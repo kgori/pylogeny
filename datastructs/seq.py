@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from ..utils import fileIO
-from ..errors import optioncheck
+from ..errors import optioncheck, directorycheck
 from copy import deepcopy
 import hashlib
 import re
@@ -21,7 +21,7 @@ class Seq(object):
         datatype=None,
         headers=[],
         sequences=[],
-        tmpdir='/tmp'
+        tmpdir=None,
         ):
 
         self.name = name
@@ -40,6 +40,8 @@ class Seq(object):
         self.index = -1
         self._update()
         self.tmpdir = tmpdir
+        if tmpdir is not None:
+            directorycheck(tmpdir)
 
     def _update(self):
         """ For updating the length and mapping attributes of the object after

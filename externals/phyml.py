@@ -10,8 +10,8 @@ import re
 class Phyml(TreeSoftware):
 
     """ __init__ takes a Seq sequence record as 
-    first (only) positional argument, and supplied_binary= and 
-    tmpdir= as keyword arguments """
+    first positional argument, tmpdir as second, and supplied_binary= 
+    as keyword argument """
 
     default_binary = 'phyml'
     score_regex = re.compile('(?<=Log-likelihood: ).+')
@@ -26,7 +26,7 @@ class Phyml(TreeSoftware):
             with open(stats_filename) as statsfile:
                 return (treefile.read(), statsfile.read())
 
-    def run(self, analysis=None, verbosity=0):
+    def run(self, analysis=None, verbosity=0, **kwargs):
         if analysis:
             self.set_default_flags(analysis)
         else:
@@ -48,7 +48,7 @@ class Phyml(TreeSoftware):
             print 'Cleaning tempfiles'
         self.clean()
         tree_object = Tree(newick=tree, score=score, program=analysis, 
-            name=self.record.name, output=stats)
+            name=self.record.name, output=stats, **kwargs)
         self.record.tree = tree_object
         if verbosity > 1:
             print 'Done.'
@@ -87,6 +87,6 @@ class Phyml(TreeSoftware):
             for flag in defaults:
                 self.add_flag(flag, defaults[flag])
 
-def runPhyml(rec, analysis, verbosity=0, tmpdir=None):
-    p = Phyml(rec, tmpdir=tmpdir)
-    return p.run(analysis, verbosity)
+def runPhyml(rec, tmpdir, analysis, verbosity=0, **kwargs):
+    p = Phyml(rec, tmpdir)
+    return p.run(analysis, verbosity, **kwargs)

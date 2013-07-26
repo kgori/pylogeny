@@ -14,7 +14,7 @@ class ExternalSoftware(object):
     default_env = ''
     local_dir = fileIO.path_to(__file__)
 
-    def __init__(self, supplied_binary='', tmpdir='/tmp'):
+    def __init__(self, tmpdir, supplied_binary=''):
 
         self.flags = {}
         self.tempfiles = []
@@ -74,11 +74,11 @@ class ExternalSoftware(object):
 
 class TreeSoftware(ExternalSoftware):
 
-    def __init__(self, record, supplied_binary='', tmpdir=None):
+    def __init__(self, record, tmpdir, supplied_binary=''):
         super(TreeSoftware, self).__init__(supplied_binary)
         self.record = record
-        self.tmpdir = tmpdir or record.tmpdir or '/tmp'
-
+        self.tmpdir = tmpdir
+        
     @property
     def record(self):
         return self._record

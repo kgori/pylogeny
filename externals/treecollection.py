@@ -23,7 +23,7 @@ class TreeCollection(TreeSoftware):
         tree = output[-2]
         return (score, tree)
 
-    def run(self, guidetree=None, verbosity=0):
+    def run(self, guidetree=None, verbosity=0, **kwargs):
 
         guidetree_file = self.write_guidetree(guidetree)
         tmpfiles = self.write()
@@ -43,7 +43,8 @@ class TreeCollection(TreeSoftware):
                 print stdout, stderr
             (score, tree) = self.read(stdout)
             tree_object = Tree(tree, score, program=fileIO.basename(self.binary),
-                               name=self.record.name, output=stdout).scale(0.01)
+                               name=self.record.name, output=stdout,
+                               **kwargs).scale(0.01)
             self.record.tree = tree_object
             return tree_object
         except:
@@ -102,7 +103,7 @@ class TreeCollection(TreeSoftware):
         return f
 
     def nj_tree(self):
-        p = Phyml(self.record)
+        p = Phyml(self.record, self.tmpdir)
         tree = p.run('nj')
         tree.reroot_at_midpoint()
         return tree
@@ -115,9 +116,9 @@ class TreeCollection(TreeSoftware):
         self.add_tempfile(filename)
         return filename
 
-def runTC(rec, guidetrees=None, verbosity=0, tmpdir=None):
+def runTC(rec, tmpdir, guidetrees=None, verbosity=0):
     if not isinstance(guidetrees, list):
         guidetrees = [guidetrees]
-    tc = TreeCollection(rec, tmpdir=tmpdir)
+    tc = TreeCollection(rec, tmpdir)
     trees = [tc.run(guidetree, verbosity) for guidetree in guidetrees]
     return min(trees, key=lambda x: x.score)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from external import ExternalSoftware
-from ..errors import filecheck, FileError
+from ..errors import filecheck, FileError, directorymake
 from ..utils import fileIO
 import numpy as np
 
@@ -11,8 +11,8 @@ class Darwin(ExternalSoftware):
 
     default_binary = 'darwin'
 
-    def __init__(self, tmpdir='/tmp', verbosity=0):
-        self.tmpdir = tmpdir
+    def __init__(self, tmpdir, verbosity=0):
+        self.tmpdir = directorymake(tmpdir)
         self.verbosity = verbosity
         self.comfile = '{0}/darcom.drw'.format(self.tmpdir)
         self.outfile = '{0}/output.drw'.format(self.tmpdir)
@@ -67,7 +67,7 @@ def numpiser(s, dtype=None):
     return arr
 
 
-def runDarwin(cmd, dtype=None, **kwargs):
-    dw = Darwin()
+def runDarwin(cmd, tmpdir, dtype=None, **kwargs):
+    dw = Darwin(tmpdir)
     output = dw.run(cmd, **kwargs)
     return numpiser(output, dtype)
