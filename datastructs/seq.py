@@ -251,7 +251,8 @@ class Seq(object):
                         line = openfile.readline()
                     else:
                         break
-                sequences.append(''.join(sequence_so_far).replace(',', ''))
+                sequences.append(''.join(sequence_so_far).translate(None, 
+                    '\n\r\t ,'))
                 if not line:
                     break
                 headers.append(line[1:].rstrip())
@@ -306,15 +307,13 @@ class Seq(object):
                 # ELSE header is not None, we've already seen it
                 # so this file must be interleaved, so carry on
                 # adding sequence fragments
-
-                if not headers[i % num_taxa]:
+                if headers[i % num_taxa] is None:
                     header = line[0]
                     sequence_fragment = ''.join(line[1:])
-
                     headers[i % num_taxa] = header
                     sequences[i % num_taxa] = [sequence_fragment]
+                
                 else:
-
                     sequence_fragment = ''.join(line)
                     sequences[i % num_taxa].append(sequence_fragment)
 
