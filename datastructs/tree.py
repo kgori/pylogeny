@@ -432,15 +432,20 @@ class Tree(dendropy.Tree):
         assert isinstance(t2, cls)
 
         intersection = t1 & t2        
+        symdiff = t1 ^ t2        
+
         t1 = t1.copy()
         t2 = t2.copy()
-        t1.prune_to_subset(intersection, inplace=True)
-        t2.prune_to_subset(intersection, inplace=True)
+        t1.prune_taxa_with_labels(symdiff)
+        t2.prune_taxa_with_labels(symdiff)
+        # t1.prune_to_subset(intersection, inplace=True)
+        # t2.prune_to_subset(intersection, inplace=True)
         t1.seed_node.edge_length=0.0
         t2.seed_node.edge_length=0.0
         # To avoid taxon set nightmares do this:
-        t1 = cls(t1.as_string('newick'))
-        t2 = cls(t2.as_string('newick'))
+        tax = dendropy.TaxonSet()
+        t1 = cls(t1.as_string('newick'), taxon_set=tax)
+        t2 = cls(t2.as_string('newick'), taxon_set=tax)
         return t1, t2
 
     @classmethod
@@ -490,6 +495,14 @@ class Tree(dendropy.Tree):
         chosen_edge = edge_list[index]
         from_head_length = cumulative_lengths[index] - rnum
         return chosen_edge, from_head_length
+
+    def multifurcate(self, threshold=1e-06, update_splits=True):
+        for edge in self.postorder_edge_iter():
+            if edge.is_internal():
+                if edge.length <= threshold:
+                    edge.collapse()
+        if update_splits:
+            self.update_splits()
 
     def ntaxa(self):
         return len(self)
@@ -851,6 +864,10 @@ class Tree(dendropy.Tree):
             return self.wrfdist_(other)
 
     @classmethod
+    def new_iterative_rtree(cls, nspecies):
+        return RandomTree.new(nspecies)
+
+    @classmethod
     def new_rtree(cls, nspecies=16, zero_root_height=True, **kwargs):
         tg = TreeGen(nspecies, **kwargs)
         tree = tg.rtree()
@@ -887,6 +904,43 @@ class Tree(dendropy.Tree):
         t1_copy.scale(normalisation)
         t2_copy.scale(normalisation)
         return t1_copy, t2_copy
+
+
+class RandomTree(object):
+
+    def __init__(self):
+        self.tree = Tree('(l1:1,l2:1,l3:1):0')
+        self.number = 3
+
+    def next_label(self):
+        self.number += 1
+        return 'l{0}'.format(self.number)
+
+    def new_taxon_object(self):
+        lab = self.next_label()
+        tax = dendropy.Taxon(label=lab)
+        return tax
+
+    def add(self, edge):
+        tail = edge.tail_node
+        head = edge.head_node
+        tail.remove_child(head)
+        new_taxon = self.new_taxon_object()
+        new_inner = tail.new_child(edge_length=1.0)        
+        new_leaf = new_inner.new_child(taxon=new_taxon, edge_length=1.0)
+        new_inner.add_child(head, edge_length=1.0)
+
+    def select(self):
+        e, _ = self.tree.map_event_onto_tree()
+        return e
+
+    @classmethod
+    def new(cls, n):
+        rt = cls()
+        for _ in range(n-3):
+            e = rt.select()
+            rt.add(e)
+        return rt.tree
 
 
 class TreeGen(object):

@@ -43,7 +43,11 @@ class Phyml(TreeSoftware):
             print 'Running phyml on {0}'.format(self.record.name)
         (stdout, stderr) = self.call(verbose=(True if verbosity > 1 else False))
         (tree, stats) = self.read(filename)
-        score = float(self.score_regex.search(stats).group(0))
+        try:
+            score = float(self.score_regex.search(stats).group(0))
+        except:
+            print tree
+            print stats
         if verbosity > 1:
             print 'Cleaning tempfiles'
         self.clean()
