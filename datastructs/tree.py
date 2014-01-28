@@ -5,7 +5,7 @@ import re
 import random
 import numpy as np
 from ..errors import FileError, filecheck, optioncheck
-from ..utils import lognormal_parameters
+# from ..utils import lognormal_parameters
 
 def cast(dendropy_tree):
     """ Cast dendropy.Tree instance as Tree instance """
@@ -145,14 +145,14 @@ class SPR(object):
             if set(self.tree.preorder_edge_iter()) - set(excl) == set([]):
                 print repr(self.tree)
                 print self.tree.as_ascii_plot()
-                print edges[prune_edge]
+                # print edges[prune_edge]
                 raise Exception('No non-sibling sprs available')
 
         regraft_edge, l2 = self.tree.map_event_onto_tree(excl)
 
         self.spr(prune_edge, l1, regraft_edge, l2)
         if rescale:
-            tree.scale(starting_length/tree.length())
+            self.tree.scale(starting_length/self.tree.length())
 
 class LGT(object):
 
@@ -431,7 +431,7 @@ class Tree(dendropy.Tree):
         assert isinstance(t1, cls)
         assert isinstance(t2, cls)
 
-        intersection = t1 & t2        
+        # intersection = t1 & t2        
         symdiff = t1 ^ t2        
 
         t1 = t1.copy()
@@ -972,7 +972,7 @@ class TreeGen(object):
                                    + 1)]
         if template and not isinstance(template, Tree):
             raise TypeError('template should be \'Tree\' object. Got',
-                            type(tree))
+                            type(template))
         self.template = template
     
     def coal(self):
