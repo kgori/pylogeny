@@ -4,7 +4,7 @@ import numpy as np
 
 def flatten_list(list_of_lists):
     """ This is faster than the one-liner version:-
-    
+
     def(flatten): return list(itertools.chain(*list_of_lists)) """
 
     flat_list = []
@@ -14,7 +14,7 @@ def flatten_list(list_of_lists):
     return flat_list
 
 def lognormal_parameters(mean, stdev):
-    """ 
+    """
     Given the mean and standard deviation wanted from a lognormal distribution,
     returns the mean (mu) and standard deviation (sigma) of the underlying
     normal distribution.
@@ -30,4 +30,4 @@ def lognormal_parameters(mean, stdev):
     variance = stdev**2
     sigma_sq = np.log( 1 + (variance/mean**2) )
     mu = np.log(mean) - sigma_sq/2
-    return mu, sqrt(sigma_sq)
+    return mu, np.sqrt(sigma_sq)

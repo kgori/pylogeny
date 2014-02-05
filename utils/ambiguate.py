@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import treeCl
 from treeCl.lib.remote.datastructs.seq import Seq
 
 docstring = '''
@@ -51,7 +50,7 @@ def get_ambiguity(a, b):
     s2 = ambiguities[b]
     union = s1 | s2
     ambig = ambiguities_rev[union]
-    
+
     return ambig.upper() if upper else ambig
 
 def ambiguate(seq1, seq2):
