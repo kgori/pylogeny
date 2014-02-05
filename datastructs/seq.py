@@ -251,7 +251,7 @@ class Seq(object):
                         line = openfile.readline()
                     else:
                         break
-                sequences.append(''.join(sequence_so_far).translate(None, 
+                sequences.append(''.join(sequence_so_far).translate(None,
                     '\n\r\t ,'))
                 if not line:
                     break
@@ -312,7 +312,7 @@ class Seq(object):
                     sequence_fragment = ''.join(line[1:])
                     headers[i % num_taxa] = header
                     sequences[i % num_taxa] = [sequence_fragment]
-                
+
                 else:
                     sequence_fragment = ''.join(line)
                     sequences[i % num_taxa].append(sequence_fragment)

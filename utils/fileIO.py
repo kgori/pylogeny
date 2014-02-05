@@ -26,9 +26,14 @@ from subprocess import Popen, PIPE
 from ..errors import filecheck, filequit, directorycheck, directorymake, directoryquit
 
 
-def basename(filename):
+def basename(filename, strip_all_extensions=True):
     return os.path.basename(filename)
 
+def strip_extensions(filename):
+    toplevel = os.path.splitext(os.path.basename(filename))
+    while toplevel[1] > '':
+        toplevel = os.path.splitext(toplevel[0])
+    return toplevel[0]
 
 def can_locate(filename):
     return (os.path.isfile(filename) if filename else False)
@@ -101,7 +106,7 @@ def head(filename, n=10):
     with freader(filename) as fr:
         for _ in range(n):
             print fr.readline().strip()
-            
+
 
 def join_path(*elements):
     return os.path.join(*elements)

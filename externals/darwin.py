@@ -12,6 +12,7 @@ class Darwin(ExternalSoftware):
     default_binary = 'darwin'
 
     def __init__(self, tmpdir, verbosity=0):
+        super(Darwin, self).__init__(tmpdir)
         self.tmpdir = directorymake(tmpdir)
         self.verbosity = verbosity
         self.comfile = '{0}/darcom.drw'.format(self.tmpdir)

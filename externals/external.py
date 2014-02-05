@@ -56,11 +56,13 @@ class ExternalSoftware(object):
     def remove_flag(self, flag):
         del self.flags[flag]
 
-    def call(self, verbose=False):
+    def call(self, verbose=False, dry_run=False):
         cmd = ' '.join([self.binary] + ['{0} {1}'.format(k, v) for (k, v) in
                        self.flags.items()])
         if verbose:
             print cmd
+        if dry_run:
+            return cmd
         (stdout, stderr) = fileIO.subprocess(cmd)
         if verbose:
             print stdout, stderr
@@ -78,7 +80,7 @@ class TreeSoftware(ExternalSoftware):
         super(TreeSoftware, self).__init__(supplied_binary)
         self.record = record
         self.tmpdir = tmpdir
-        
+
     @property
     def record(self):
         return self._record

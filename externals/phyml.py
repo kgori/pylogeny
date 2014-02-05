@@ -9,8 +9,8 @@ import re
 
 class Phyml(TreeSoftware):
 
-    """ __init__ takes a Seq sequence record as 
-    first positional argument, tmpdir as second, and supplied_binary= 
+    """ __init__ takes a Seq sequence record as
+    first positional argument, tmpdir as second, and supplied_binary=
     as keyword argument """
 
     default_binary = 'phyml'
@@ -26,7 +26,8 @@ class Phyml(TreeSoftware):
             with open(stats_filename) as statsfile:
                 return (treefile.read(), statsfile.read())
 
-    def run(self, analysis=None, verbosity=0, **kwargs):
+    def run(self, analysis=None, verbosity=0,
+            **kwargs):
         if analysis:
             self.set_default_flags(analysis)
         else:
@@ -41,6 +42,10 @@ class Phyml(TreeSoftware):
             print_and_return('Running phyml on {0}'.format(self.record.name))
         elif verbosity > 1:
             print 'Running phyml on {0}'.format(self.record.name)
+        if kwargs.get('dry_run', False):
+            cmd = self.call(verbose=(True if verbosity > 1 else False),
+                dry_run=True)
+            return cmd
         (stdout, stderr) = self.call(verbose=(True if verbosity > 1 else False))
         (tree, stats) = self.read(filename)
         try:
@@ -51,9 +56,10 @@ class Phyml(TreeSoftware):
         if verbosity > 1:
             print 'Cleaning tempfiles'
         self.clean()
-        tree_object = Tree(newick=tree, score=score, program=analysis, 
+        tree_object = Tree(newick=tree, score=score, program=analysis,
             name=self.record.name, output=stats, **kwargs)
-        self.record.tree = tree_object
+        if kwargs.get('set_as_record_tree', True):
+            self.record.tree = tree_object
         if verbosity > 1:
             print 'Done.'
         return tree_object
@@ -80,6 +86,7 @@ class Phyml(TreeSoftware):
             defaults['-b'] = 0
             defaults['-c'] = 4
             defaults['-q'] = ''
+            defaults['--no_memory_check'] = ''
             defaults['--quiet'] = ''
             if analysis == 'ml' or analysis == 'full':
                 defaults['-o'] = 'tlr'
@@ -87,10 +94,18 @@ class Phyml(TreeSoftware):
                 defaults['-o'] = 'n'
             elif analysis == 'lr' or analysis == 'bionj+':
                 defaults['-o'] = 'lr'
+            elif analysis == 'lk':
+                defaults['-o'] = 'n'
 
             for flag in defaults:
                 self.add_flag(flag, defaults[flag])
 
-def runPhyml(rec, tmpdir, analysis, verbosity=0, **kwargs):
+def runPhyml(rec, tmpdir, analysis, verbosity=0, tree=None, **kwargs):
     p = Phyml(rec, tmpdir)
+    if analysis == 'lk' and tree is not None:
+        tree_name = (tree.name if tree.name else 'tmp_tree')
+        tmp_treefile = '{0}/{1}.nwk'.format(tmpdir, tree_name)
+        tree.write_to_file(tmp_treefile)
+        p.add_tempfile(filecheck(tmp_treefile))
+        p.add_flag('-u', tmp_treefile)
     return p.run(analysis, verbosity, **kwargs)
