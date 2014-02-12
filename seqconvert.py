@@ -19,12 +19,12 @@ def sort(rec, scheme):
     elif scheme == 'lr':
         rec.sort_by_length(reverse=False)
     elif scheme == 'n':
-        rec.sort_by_name()      
+        rec.sort_by_name()
     elif scheme == 'nr':
         rec.sort_by_name(reverse=True)
 
 
-def write(rec, outfile, to_format='phylip', 
+def write(rec, outfile, to_format='phylip',
           interleaved=False, linebreaks=None,
           datatype='protein'):
 
@@ -33,7 +33,7 @@ def write(rec, outfile, to_format='phylip',
     elif to_format == 'nexus':
         rec.write_nexus(outfile, datatype)
     elif to_format == 'phylip':
-        rec.write_phylip(outfile, interleaved=interleaved, 
+        rec.write_phylip(outfile, interleaved=interleaved,
             linebreaks=linebreaks)
 
 
@@ -52,14 +52,14 @@ def parse_args():
     parser.add_argument('-o', '--outfile', dest='outfile', type=str,
         default='stdout',
         help='Output filename (\'stdout\' to write to screen(default))')
-    parser.add_argument('-f', '--from', dest='fr', type=str, 
+    parser.add_argument('-f', '--from', dest='fr', type=str,
         default='fasta', choices=f_choices,
         help='Input file format (this program doesn\'t guess; default=fasta)')
-    parser.add_argument('-t', '--to', dest='to', type=str, 
+    parser.add_argument('-t', '--to', dest='to', type=str,
         default='phylip', choices=t_choices,
         help='Output file format (default=phylip)')
-    parser.add_argument('-n', '--interleaved', dest='interleaved', 
-        action='store_true', 
+    parser.add_argument('-n', '--interleaved', dest='interleaved',
+        action='store_true',
         help='Set phylip output to interleaved (default=sequential)')
     parser.add_argument('-s', '--sort', dest='sort',
         choices=s_choices,
@@ -70,7 +70,7 @@ def parse_args():
     parser.add_argument('-d', '--datatype', dest='datatype',
         choices=d_choices, default='protein',
         help='Datatype (optional) = \'dna\', \'protein\'')
-    parser.add_argument('-l', '--linewidth', type=int, 
+    parser.add_argument('-l', '--linewidth', type=int,
         help='Break lines up by length')
     parser.add_argument('-c', '--case', dest='case', type=str,
         choices=c_choices, help='Change case of sequences')
@@ -78,16 +78,16 @@ def parse_args():
     return parser.parse_args()
 
 
-def main(): 
+def main():
     args = parse_args()
     filecheck(args.infile)
     rec = Seq(args.infile, file_format=args.fr)
     if args.sort:
-        sort(rec, args.sort) 
+        sort(rec, args.sort)
     if args.case:
         change_case(rec, args.case)
 
-    write(rec, args.outfile, args.to, args.interleaved, 
+    write(rec, args.outfile, args.to, args.interleaved,
           args.linewidth, args.datatype)
 
 
