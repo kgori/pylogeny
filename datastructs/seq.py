@@ -470,3 +470,18 @@ def concatenate(records):
     for rec in records[1:]:
         seed += rec
     return seed
+
+def qfile(records, model='DNA'):
+    from_ = 1
+    to_ = 0
+    qs = list()
+    for rec in records:
+        to_ += rec.seqlength
+        qs.append('{0}, {1} = {2}-{3}'.format(
+            model, rec.name, from_, to_))
+        from_ += rec.seqlength
+    return '\n'.join(qs)
+
+def paml_partitions(records):
+    return 'G {0} {1}'.format(len(records),
+        ' '.join(str(rec.seqlength) for rec in records))

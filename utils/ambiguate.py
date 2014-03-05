@@ -53,7 +53,10 @@ def get_ambiguity(a, b):
 
     return ambig.upper() if upper else ambig
 
-def ambiguate(seq1, seq2):
+def ambiguate(seq1, seq2, delete_ambiguous=False):
+    """ delete_ambiguous: Marks sequences for deletion by replacing all
+    chars with 'X'. These seqs are deleted later with remove_empty """
+    delete = False
     combination = list()
     z = zip(seq1, seq2)
     for (a,b) in z:
@@ -63,33 +66,55 @@ def ambiguate(seq1, seq2):
             if a == '-' or b == '-':
                 combination.append('-')
             else:
+                if delete_ambiguous:
+                    delete = True
                 ambig = get_ambiguity(a, b)
                 combination.append(ambig)
+    if delete:
+        return 'X' * len(combination)
     return ''.join(combination)
+
+def remove_empty(rec):
+    """ Deletes sequences that were marked for deletion by convert_to_IUPAC """
+    for header, sequence in rec.mapping.items():
+        if all(char == 'X' for char in sequence):
+            rec.headers.remove(header)
+            rec.sequences.remove(sequence)
+    rec._update()
+    return rec
 
 def get_seqs(rec, pref):
     return rec.mapping[pref+'.1'], rec.mapping[pref+'.2']
 
 if __name__ == '__main__':
-    import sys
-    if len(sys.argv) == 1:
-        print 'No file entered - syntax = ambiguate.py <FILE>'
-        sys.exit(1)
-    f = sys.argv[1]
-    if f == '-h' or f == '--help':
-        print docstring
-        sys.exit()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('infile', help='Input file in phylip format')
+    parser.add_argument('-d','--delete_ambiguous', action='store_true',
+                        help=('Deletes sequences with any'
+                        'ambiguity - could result in empty alignment'))
+    parser.add_argument('-c', '--cutoff', type=int, default=2,
+                        help=('If number of sequences is less than this, '
+                              'no output is written'))
+    parser.add_argument('-o', '--outfile', type=str)
+    args = parser.parse_args()
+
+    f = args.infile
     rec = Seq(f, 'phylip')
     prefixes = get_prefixes(rec)
-    print prefixes
     headers = list()
     sequences = list()
     for pref in prefixes:
-        print pref
         seq1, seq2 = get_seqs(rec, pref)
-        combin = ambiguate(seq1, seq2)
+        combin = ambiguate(seq1, seq2, args.delete_ambiguous)
         headers.append(pref)
         sequences.append(combin)
     newrec = Seq(headers=headers, sequences=sequences)
-    out = f[:f.rindex('.phy')] + '_ambig.phy'
-    newrec.write_phylip(out, interleaved=True)
+    remove_empty(newrec)
+    out = (args.outfile if args.outfile
+                        else f[:f.rindex('.phy')] + '_ambig.phy')
+    if len(newrec) >= args.cutoff:
+        newrec.write_phylip(out, interleaved=True)
+    else:
+        print 'Empty'
