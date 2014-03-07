@@ -1,11 +1,96 @@
 #!/usr/bin/env python
 
-from external import TreeSoftware
+from external import ExternalSoftware, TreeSoftware
 from ..errors import filecheck
 from ..datastructs.tree import Tree
 from ..utils import fileIO
 from ..utils.printing import print_and_return
+from bsub import bsub
+import os
 import re
+import shutil
+import tempfile
+
+
+
+class LSFPhyml(ExternalSoftware):
+
+    default_binary = 'phyml'
+    score_regex = re.compile('(?<=Log-likelihood: ).+')
+    local_dir = fileIO.path_to(__file__)
+
+    def __init__(self, records, tmpdir, supplied_binary=''):
+        super(LSFPhyml, self).__init__(tmpdir, supplied_binary)
+        self.records = records
+        self.temp_dirs = self.setup_temp_dirs()
+        self.phyml_objects = self.setup_phyml_objects()
+
+    @property
+    def records(self):
+        return self._records
+
+    @records.setter
+    def records(self, records):
+        self._records = records
+
+    def write(self):
+        pass
+
+    def setup_temp_dirs(self):
+        temp_dirs = [tempfile.mkdtemp(dir=self.tmpdir) for rec in self.records]
+        return temp_dirs
+
+    def setup_phyml_objects(self):
+        phyml_objects = [Phyml(rec, td, self.binary)
+                         for (rec, td) in zip(self.records, self.temp_dirs)]
+        return phyml_objects
+
+    def get_command_strings(self, analysis='ml'):
+        return [phyml.run(analysis, dry_run=True)
+                for phyml in self.phyml_objects]
+
+    def launch_lsf(self, command_strings, verbose=False, output='/dev/null'):
+        curr_dir = os.getcwd()
+        os.chdir(self.tmpdir)
+        job_ids = [bsub('phyml_task',
+                        o='/dev/null',
+                        e='/dev/null',
+                        verbose=verbose)(cmd).job_id
+                   for cmd in command_strings]
+        bsub.poll(job_ids)
+        os.chdir(curr_dir)
+
+    def read(self, analysis):
+        self.trees = []
+        for phyml in self.phyml_objects:
+            (tree, stats) = phyml.read()
+            try:
+                score = float(self.score_regex.search(stats).group(0))
+            except:
+                score = 0
+            tree_object = Tree(newick=tree, score=score, program=analysis,
+                               name=phyml.record.name, output=stats)
+            self.trees.append(tree_object)
+        return self.trees
+
+    def clean(self):
+        for phyml in self.phyml_objects:
+            phyml.clean()
+        for d in self.temp_dirs:
+            shutil.rmtree(d)
+
+    def run(self, analysis, verbose=False):
+        command_strings = self.get_command_strings(analysis)
+        self.launch_lsf(command_strings, verbose)
+        trees = self.read(analysis)
+        if len(trees) == len(self.records):
+            self.clean()
+        return trees
+
+    def call(self):
+        pass
+
+
 
 class Phyml(TreeSoftware):
 
@@ -17,7 +102,8 @@ class Phyml(TreeSoftware):
     score_regex = re.compile('(?<=Log-likelihood: ).+')
     local_dir = fileIO.path_to(__file__)
 
-    def read(self, filename):
+    def read(self, filename=None):
+        filename = filename or self.filename
         tree_filename = filename + '_phyml_tree.txt'
         stats_filename = filename + '_phyml_stats.txt'
         self.add_tempfile(tree_filename)
@@ -38,14 +124,20 @@ class Phyml(TreeSoftware):
         filename = self.write()
         filecheck(filename)
         self.add_flag('-i', filename)
+
+        # OUTPUT TO USER
         if verbosity == 1:
             print_and_return('Running phyml on {0}'.format(self.record.name))
         elif verbosity > 1:
             print 'Running phyml on {0}'.format(self.record.name)
+
+        # DRY RUN - just get command string
         if kwargs.get('dry_run', False):
             cmd = self.call(verbose=(True if verbosity > 1 else False),
                 dry_run=True)
             return cmd
+
+        # RUN PHYML
         (stdout, stderr) = self.call(verbose=(True if verbosity > 1 else False))
         (tree, stats) = self.read(filename)
         try:
@@ -65,9 +157,15 @@ class Phyml(TreeSoftware):
         return tree_object
 
     def write(self):
-        filename = self.record.get_name(default='tmp_phyml_input')
-        filename = '{0}/{1}.phy'.format(self.tmpdir, filename)
-        self.record.write_phylip(filename)
+        record_name = self.record.get_name(default='tmp_phyml_input')
+        with tempfile.NamedTemporaryFile(prefix=self.record.name,
+                                         suffix='.phy',
+                                         dir=self.tmpdir,
+                                         delete=False) as file_:
+            filename = file_.name
+            file_.write(self.record.write_phylip('pipe'))
+        self.filename = filename
+        # filename = '{0}/{1}.phy'.format(self.tmpdir, record_name)
         self.add_tempfile(filename)
         return filename
 
@@ -109,3 +207,8 @@ def runPhyml(rec, tmpdir, analysis, verbosity=0, tree=None, **kwargs):
         p.add_tempfile(filecheck(tmp_treefile))
         p.add_flag('-u', tmp_treefile)
     return p.run(analysis, verbosity, **kwargs)
+
+def runLSFPhyml(records, tmpdir, analysis, verbosity, **kwargs):
+    lsfphyml = LSFPhyml(records, tmpdir)
+    trees = lsfphyml.run(analysis, verbose=(True if verbosity > 0 else False))
+    return trees

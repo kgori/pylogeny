@@ -4,7 +4,10 @@ from ..utils import fileIO
 from ..errors import optioncheck, directorycheck
 from copy import deepcopy
 import hashlib
+import itertools
 import re
+
+DNA_ACGT_THRESHOLD = 0.75
 
 class Seq(object):
 
@@ -30,13 +33,13 @@ class Seq(object):
         self.mapping = {}
         self.length = 0
         self.seqlength = 0
-        self.datatype = datatype
         self.is_aligned = False
         if infile:
             if file_format == 'fasta':
-                self.read_fasta_file(infile, name=name, datatype=datatype)
+                self.read_fasta_file(infile, name=name)
             elif file_format == 'phylip':
-                self.read_phylip_file(infile, name=name, datatype=datatype)
+                self.read_phylip_file(infile, name=name)
+        self.datatype = (datatype or self.guess_datatype())
         self.index = -1
         self._update()
         self.tmpdir = tmpdir
@@ -63,6 +66,20 @@ class Seq(object):
 
     def __iter__(self):  # Should do this with generators / yield
         return self
+
+    def guess_datatype(self):
+        if not self.sequences:
+            return
+        aa_only = {'E', 'F', 'I', 'L', 'P', 'Q', 'X', 'Z',
+                   'e', 'f', 'i', 'l', 'p', 'q', 'x', 'z'}
+        all_chars = [x for x in itertools.chain(*self.sequences)
+                     if not x in {'-', 'x', 'X'}]
+        if aa_only.intersection(all_chars):
+            return 'protein'
+        acgt_frequency = (sum(all_chars.count(x) for x in 'acgtACGT') /
+                          float(len(all_chars)))
+
+        return 'dna' if acgt_frequency > DNA_ACGT_THRESHOLD else 'protein'
 
     def next(self):  # As above
         self.index += 1
@@ -337,6 +354,10 @@ class Seq(object):
             self._update()
 
 
+    def n_site_patterns(self):
+        return len(set(self._pivot(self.sequences)))
+
+
     def change_case(self, case):
         optioncheck(case, ['lower', 'upper'])
         if case=='upper':
@@ -471,10 +492,12 @@ def concatenate(records):
         seed += rec
     return seed
 
-def qfile(records, model='DNA'):
+def qfile(records, model='DNA', ml_freqs=False):
     from_ = 1
     to_ = 0
     qs = list()
+    if ml_freqs:
+        model += 'X'
     for rec in records:
         to_ += rec.seqlength
         qs.append('{0}, {1} = {2}-{3}'.format(

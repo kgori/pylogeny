@@ -18,10 +18,16 @@ class ExternalSoftware(object):
 
         self.flags = {}
         self.tempfiles = []
-        if fileIO.can_locate(supplied_binary):
-            self.binary = supplied_binary
-        else:
 
+        # TRY TO FIND SUPPLIED BINARY
+        path_to_supplied_binary = fileIO.locate_file(supplied_binary,
+                self.default_env, self.local_dir)
+
+        if fileIO.can_locate(path_to_supplied_binary):
+            self.binary = path_to_supplied_binary
+
+        # FALL BACK TO DEFAULT BINARY
+        else:
             default_binary = fileIO.locate_file(self.default_binary,
                     self.default_env, self.local_dir)
             self.binary = default_binary
@@ -77,9 +83,8 @@ class ExternalSoftware(object):
 class TreeSoftware(ExternalSoftware):
 
     def __init__(self, record, tmpdir, supplied_binary=''):
-        super(TreeSoftware, self).__init__(supplied_binary)
+        super(TreeSoftware, self).__init__(tmpdir, supplied_binary)
         self.record = record
-        self.tmpdir = tmpdir
 
     @property
     def record(self):
