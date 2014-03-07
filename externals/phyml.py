@@ -78,6 +78,9 @@ class LSFPhyml(ExternalSoftware):
             phyml.clean()
         for d in self.temp_dirs:
             shutil.rmtree(d)
+        for f in os.listdir(self.tmpdir):
+            if (f.endswith('.out') or f.endswith('.err')):
+                os.remove(f)
 
     def run(self, analysis, verbose=False):
         command_strings = self.get_command_strings(analysis)
