@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from external import ExternalSoftware, TreeSoftware
-from ..errors import filecheck
+from ..errors import filecheck, optioncheck
 from ..datastructs.tree import Tree
 from ..utils import fileIO
 from ..utils.printing import print_and_return
@@ -12,6 +12,7 @@ import shutil
 import tempfile
 
 
+ANALYSES = ['tlr', 'lr', 'l', 'r', 'ml', 'full', 'nj', 'bionj', 'bionj+', 'lk']
 
 class LSFPhyml(ExternalSoftware):
 
@@ -94,7 +95,6 @@ class LSFPhyml(ExternalSoftware):
         pass
 
 
-
 class Phyml(TreeSoftware):
 
     """ __init__ takes a Seq sequence record as
@@ -121,6 +121,7 @@ class Phyml(TreeSoftware):
             self.set_default_flags(analysis)
         else:
             analysis = fileIO.basename(self.binary)
+        optioncheck(analysis, ANALYSES)
         if verbosity > 1:
             print self.flags
             print 'Writing tempfiles to', self.tmpdir
@@ -189,12 +190,16 @@ class Phyml(TreeSoftware):
             defaults['-q'] = ''
             defaults['--no_memory_check'] = ''
             defaults['--quiet'] = ''
-            if analysis == 'ml' or analysis == 'full':
+            if analysis == 'ml' or analysis == 'full' or analysis == 'tlr':
                 defaults['-o'] = 'tlr'
             elif analysis == 'nj' or analysis == 'bionj':
                 defaults['-o'] = 'n'
             elif analysis == 'lr' or analysis == 'bionj+':
                 defaults['-o'] = 'lr'
+            elif analysis == 'l':
+                defaults['-o'] = 'l'
+            elif analysis == 'r':
+                defaults['-o'] = 'r'
             elif analysis == 'lk':
                 defaults['-o'] = 'n'
 
@@ -202,6 +207,7 @@ class Phyml(TreeSoftware):
                 self.add_flag(flag, defaults[flag])
 
 def runPhyml(rec, tmpdir, analysis, verbosity=0, tree=None, **kwargs):
+    optioncheck(analysis, ANALYSES)
     p = Phyml(rec, tmpdir)
     if analysis == 'lk' and tree is not None:
         tree_name = (tree.name if tree.name else 'tmp_tree')
@@ -212,6 +218,7 @@ def runPhyml(rec, tmpdir, analysis, verbosity=0, tree=None, **kwargs):
     return p.run(analysis, verbosity, **kwargs)
 
 def runLSFPhyml(records, tmpdir, analysis, verbosity, **kwargs):
+    optioncheck(analysis, ANALYSES)
     lsfphyml = LSFPhyml(records, tmpdir)
     trees = lsfphyml.run(analysis, verbose=(True if verbosity > 0 else False))
     return trees
